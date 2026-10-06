@@ -20,7 +20,6 @@ name: Build Windows amd64
 #     同时避免 CI 去搜集证书、让输出带上机器相关的不确定性。
 #   - 不发布到 GitHub Release，只上传为 workflow artifact。发布链路需要凭据与
 #     长期存储，对单人使用是纯负担。
-name: Build Windows amd64
 
 on:
   # 手动触发：日常自查，不占用每次 push 的额度。
