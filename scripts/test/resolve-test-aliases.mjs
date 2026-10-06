@@ -18,7 +18,12 @@
  * 是 CommonJS 的解析入口，ESM 根本不经过它，hook 上去不会生效。
  * `registerHooks`（Node 22.15+/24）提供的 `resolve` 才是 ESM 同步解析链上的钩子。
  *
- * 用法：node --import ./scripts/test/resolve-test-aliases.mjs --test <files>
+ * 用法：node --import ./scripts/test/resolve-test-aliases.mjs --test-isolation=none --test <files>
+ *
+ * `--test-isolation=none` 是必需的：node --test 默认以 `process` 隔离运行每个测试文件，
+ * 即为每个文件派生独立子进程，而 `--import` 注册的钩子**不会**被这些子进程继承，
+ * 于是钩子完全不生效（表现为 `.js` / `@/` 仍是 ERR_MODULE_NOT_FOUND）。
+ * 改成 none 后所有测试文件与钩子在同一进程内，钩子才真正被加载。
  */
 import { existsSync } from "node:fs";
 import { registerHooks } from "node:module";
