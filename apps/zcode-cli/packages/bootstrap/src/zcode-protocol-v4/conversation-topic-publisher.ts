@@ -53,7 +53,7 @@ import type { TopicFrameReservation } from "./topic-frame-reservation.js";
 
 interface LogEntry {
   seq: number;
-  deltas: ConversationDelta[];
+  deltas: readonly ConversationDelta[];
 }
 
 const TERMINAL_PLAN_STATUSES: ReadonlySet<ToolCallRow["status"]> = new Set([

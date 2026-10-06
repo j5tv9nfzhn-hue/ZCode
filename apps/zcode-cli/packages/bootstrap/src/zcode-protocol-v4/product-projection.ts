@@ -971,8 +971,14 @@ export class ProductProjection {
     return this.findRow(rowId)?.turnId ?? null;
   }
 
-  /** 应用一个权威事件，返回该事件产生的 delta 序列（可能为空）。 */
-  applyEvent(event: SessionEvent): ConversationDelta[] {
+  /**
+   * 应用一个权威事件，返回该事件产生的 delta 序列（可能为空）。
+   *
+   * 返回只读数组：deltas 一旦产出就视为不可变快照，两个调用方
+   * （conversation-topic-publisher / applyEventAtomically 的候选投影）都只消费不修改。
+   * 声明成可变会让「内部只读」在向上传递时被降级成可变，丢掉这层约束。
+   */
+  applyEvent(event: SessionEvent): readonly ConversationDelta[] {
     return this.applyEventInternal(event, true);
   }
 
@@ -987,7 +993,7 @@ export class ProductProjection {
     this.rowIndexById = this.hydrationAccumulator.rowIndexById;
   }
 
-  applyHydrationEvent(event: SessionEvent): ConversationDelta[] {
+  applyHydrationEvent(event: SessionEvent): readonly ConversationDelta[] {
     if (!this.hydrationAccumulator) throw new Error("hydration replay is not active");
     return this.applyEventInternal(event, false);
   }
@@ -1007,7 +1013,7 @@ export class ProductProjection {
   private applyEventInternal(
     event: SessionEvent,
     materializeActions: boolean,
-  ): ConversationDelta[] {
+  ): readonly ConversationDelta[] {
     if (event.type === SessionEventType.SubagentSpawned) {
       const childSessionId = this.stringPayload(
         event.payload as Record<string, unknown>,
@@ -1150,7 +1156,7 @@ export class ProductProjection {
   applyEventAtomically(
     event: SessionEvent,
     accept: (snapshot: ConversationSnapshot, deltas: readonly ConversationDelta[]) => boolean,
-  ): ConversationDelta[] | null {
+  ): readonly ConversationDelta[] | null {
     const candidate = this.cloneProjection();
     const deltas = candidate.applyEvent(event);
     if (!accept(candidate.snapshot, deltas)) return null;
