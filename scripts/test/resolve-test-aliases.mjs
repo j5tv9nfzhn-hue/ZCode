@@ -1,29 +1,23 @@
 /**
- * 单测的 ESM 解析钩子（配合 `node --test` 使用）。
+ * 单测的 ESM 解析钩子（配合 `tsx --test` 使用）。
  *
- * 解决两件事：
+ * 只解决一件事：`@/` 路径别名。
  *
- * 1. `.js` 后缀的 import 指回磁盘上的 `.ts` / `.tsx`。
- *    仓库遵循 NodeNext 的 ESM 约定——源码里互相 import 时写 `"./foo.js"`
- *    （`packages/shared/src/index.ts` 就是 `from "./resource-budget.js"`），
- *    但磁盘上只有 `foo.ts`。Node 原生类型剥离（Node 24 默认开启）只擦除类型语法，
- *    **不改写 import 说明符**，因此直接跑会 ERR_MODULE_NOT_FOUND。
+ * 背景：仅 `packages/ui/tsconfig.json` 声明了 `@/* → ./src/*`，是全仓唯一别名。
+ * tsx 从被加载文件所在目录向上找最近的 `tsconfig.json` 读 paths，而各包的
+ * `include` 只覆盖 `src/**`、仓库根又只有 `tsconfig.base.json` 没有
+ * `tsconfig.json`，于是 paths 完全没被加载，`packages/ui` 源码里的 `@/lib/...`
+ * 在测试中报 ERR_MODULE_NOT_FOUND。
  *
- * 2. `@/` 路径别名。
- *    仅 `packages/ui/tsconfig.json` 声明了 `@/* → ./src/*`，是全仓唯一别名。
- *    Node 不读 tsconfig 的 paths（那需要打包器或 loader 插件），所以测试环境要手工映射。
+ * 为什么不用 tsx 自己的 `--tsconfig`：一次只能给一个文件，而这个仓库每个包的
+ * 别名都可能不同（当前只有 ui 有，但机制上不保证）。
  *
- * 为什么用 `module.registerHooks` 而不是 monkey-patch `Module.defaultResolveFilename`：
- * 仓库所有包都是 `"type": "module"`，走的是 **ESM loader**；`defaultResolveFilename`
- * 是 CommonJS 的解析入口，ESM 根本不经过它，hook 上去不会生效。
- * `registerHooks`（Node 22.15+/24）提供的 `resolve` 才是 ESM 同步解析链上的钩子。
+ * **不要**在这里做 `.js` → `.ts` 的映射：tsx 已经处理了这件事，且做得比手写更准
+ * （它按包边界和 tsconfig 推断）。曾经试过用 Node 原生 `--test` 替代 tsx，结果撞上
+ * strip-only 模式不支持 TypeScript 参数属性（`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`），
+ * 而本仓库多处使用构造函数参数属性——所以测试运行器必须是 tsx。
  *
- * 用法：node --import ./scripts/test/resolve-test-aliases.mjs --test-isolation=none --test <files>
- *
- * `--test-isolation=none` 是必需的：node --test 默认以 `process` 隔离运行每个测试文件，
- * 即为每个文件派生独立子进程，而 `--import` 注册的钩子**不会**被这些子进程继承，
- * 于是钩子完全不生效（表现为 `.js` / `@/` 仍是 ERR_MODULE_NOT_FOUND）。
- * 改成 none 后所有测试文件与钩子在同一进程内，钩子才真正被加载。
+ * 用法：tsx --import ./scripts/test/resolve-test-aliases.mjs --test <files>
  */
 import { existsSync } from "node:fs";
 import { registerHooks } from "node:module";
@@ -33,7 +27,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const UI_SRC = join(repoRoot, "packages", "ui", "src");
 
-/** import 说明符写 `.js`，磁盘是 `.ts`/`.tsx`；同时支持目录的 index 形式。 */
+/** 别名目标可能带 `.js` 后缀（NodeNext 约定）或不带；两种都要能找到磁盘上的 `.ts`/`.tsx`。 */
 function resolveSourceFile(basePath) {
   const candidates = [
     basePath,
@@ -47,31 +41,12 @@ function resolveSourceFile(basePath) {
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    // 1) `@/` 别名
     if (specifier.startsWith("@/")) {
       const resolved = resolveSourceFile(join(UI_SRC, specifier.slice(2)));
       if (resolved) {
         return { url: pathToFileURL(resolved).href, shortCircuit: true };
       }
     }
-
-    // 2) `.js` → `.ts` / `.tsx`
-    // 必须**前置**判断而不是"默认解析失败再回退"：nextResolve 对不存在的文件不一定
-    // 抛异常，可能直接返回一个未经验证的 URL，错误延后到加载阶段才暴露，那时已经
-    // 拿不到机会纠正。先看磁盘上有没有对应的 .ts，有就直接短路。
-    if (specifier.endsWith(".js")) {
-      const base = specifier.slice(0, -".js".length);
-      // 相对说明符要相对父模块 URL 解析，不能直接当文件系统路径用
-      const parentPath = context.parentURL?.startsWith("file:")
-        ? fileURLToPath(context.parentURL)
-        : join(repoRoot, "unknown");
-      const absoluteBase = base.startsWith(".") ? join(dirname(parentPath), base) : base;
-      const resolved = resolveSourceFile(absoluteBase);
-      if (resolved) {
-        return { url: pathToFileURL(resolved).href, shortCircuit: true };
-      }
-    }
-
     return nextResolve(specifier, context);
   },
 });
