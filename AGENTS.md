@@ -20,7 +20,7 @@
 | 提交前检查       | `pnpm verify:pre-push`（Lint 与架构检查） |
 | 架构检查         | `pnpm architecture:check --changed`       |
 | 模块阅读包       | `pnpm architecture:context <module-id>`   |
-| 未使用依赖与导出 | `pnpm knip`                               |
+| 未使用依赖与导出 | `pnpm knip`（**CI 里非阻塞**，见「CI 与发布」） |
 | 导出引用查询     | `pnpm dep:refs --list-exports <file>`     |
 | 单元测试         | `pnpm test`                               |
 
@@ -39,6 +39,7 @@
 ## CI 与发布
 
 - 两个流水线，**全部跑在 Windows x64 上**，不用 matrix：`ci.yml`（格式 / lint / typecheck / 单测 / 架构检查 / knip）与 `build-windows-amd64.yml`（手动或打 `v*` tag 触发打包）。
+- **`pnpm knip` 在 CI 里是非阻塞的**（`continue-on-error: true`）。它在本流水线建立前从未真正执行过，真实规模是 331 个未使用导出 + 126 个未使用类型 + 57 个未使用依赖。其中 `ssh2`、`node-forge` 一类是**运行时动态 require** 的依赖，knip 的静态分析看不到，误删会让产物启动即崩。清理完这批债务后，去掉 `ci.yml` 里的 `continue-on-error` 让它重新成为门禁。
 - **强制约束：只产出 Windows x64，产物仅本人使用。** 由四层共同保证，任何一层被绕过都会被下一层拦住：
   1. `runs-on` 硬编码 `windows-2022`，不得引入 matrix；
   2. job 级 `env` 固定 `ZCODE_TARGET_OS=win32` / `ZCODE_TARGET_ARCH=x64`；
