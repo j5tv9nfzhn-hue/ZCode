@@ -27,7 +27,7 @@
  * - toService: 利用 ES6 Proxy 拦截属性访问，自动分派到 call/listen
  */
 
-import { Event, Emitter, IDisposable, DisposableStore } from "./foundation.js";
+import { Emitter, DisposableStore, type Event, type IDisposable } from "./foundation.js";
 import { IChannel, IServerChannel } from "./channels.js";
 
 // ============================================================================

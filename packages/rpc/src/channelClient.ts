@@ -1,5 +1,5 @@
 import { VSBuffer } from "./buffer.js";
-import { CancellationToken, Event, Emitter, type IDisposable } from "./foundation.js";
+import { Emitter, type CancellationToken, type Event, type IDisposable } from "./foundation.js";
 import { BufferReader, BufferWriter, deserialize, serialize } from "./serialization.js";
 import type { IMessagePassingProtocol } from "./protocol.js";
 import {
