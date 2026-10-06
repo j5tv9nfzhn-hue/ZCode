@@ -9,7 +9,14 @@
         "scripts/check-workspace-freshness.mjs",
         "scripts/mise-run.mjs",
         "packages/*/test/*.test.ts",
-        "packages/*/test/**/*.test.ts"
+        "packages/*/test/**/*.test.ts",
+        "scripts/build-desktop-agent-cli.mjs",
+        "scripts/compile-desktop-agent-bytecode.cjs",
+        "scripts/desktop-agent-bytecode-runtime.cjs",
+        "scripts/generate-third-party-notices.mjs",
+        "scripts/licenses.mjs",
+        "scripts/third-party-npm.mjs",
+        "scripts/dev/zcode-stdio-tap.mjs"
       ],
       "project": ["scripts/**/*.mjs", "scripts/**/*.cjs"]
     },
@@ -23,11 +30,14 @@
       ],
       "project": ["scripts/**/*.mjs", "scripts/**/*.cjs"]
     },
+    "apps/zcode-cli": {
+      "entry": ["scripts/shadow-replay.mjs"]
+    },
     "packages/server": {
       "entry": ["src/entry-stdio.ts", "build-remote.ts"]
     },
     "packages/services": {
-      "entry": ["src/index.ts", "src/storage/module.ts"]
+      "entry": ["src/index.ts", "src/storage/module.ts", "test/*.test.ts"]
     },
     "packages/ui": {
       "entry": ["src/index.ts", "test/*.test.ts"]
