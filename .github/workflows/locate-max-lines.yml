@@ -46,16 +46,41 @@ jobs:
           node -e '
             const fs = require("node:fs");
             const raw = fs.readFileSync("oxlint.json", "utf8");
-            // json reporter 输出可能前面混有非 JSON 行，从第一个 [ 开始截取
-            const start = raw.indexOf("[");
-            if (start < 0) { console.log("NO_JSON_OUTPUT"); process.exit(0); }
-            let data;
-            try { data = JSON.parse(raw.slice(start)); }
-            catch (e) { console.log("JSON_PARSE_FAIL:", e.message); process.exit(0); }
-            const hits = [];
-            for (const d of data.diagnostics ?? []) {
-              if (!/too many lines/.test(d.message ?? "")) continue;
-              hits.push({ file: d.filename ?? d.filePath ?? "?", lines: d.code ?? "?", rule: d.rule ?? d.code });
+            // json reporter 的输出尾部可能追加了摘要行，整份 JSON.parse 会失败。
+            // 这里逐个候选起点尝试解析，取第一个成功且含 diagnostics 的结果。
+            let data = null;
+            for (const ch of ["[", "{"]) {
+              const start = raw.indexOf(ch);
+              if (start < 0) continue;
+              // 找到与起点配对的结束括号，截取完整片段
+              let depth = 0, end = -1, inStr = false, esc = false;
+              for (let i = start; i < raw.length; i++) {
+                const c = raw[i];
+                if (inStr) {
+                  if (esc) esc = false;
+                  else if (c === "\\") esc = true;
+                  else if (c === "\"") inStr = false;
+                  continue;
+                }
+                if (c === "\"") { inStr = true; continue; }
+                if (c === ch) depth++;
+                else if (c === (ch === "[" ? "]" : "}")) { depth--; if (depth === 0) { end = i; break; } }
+              }
+              if (end < 0) continue;
+              try {
+                const parsed = JSON.parse(raw.slice(start, end + 1));
+                data = Array.isArray(parsed) ? { diagnostics: parsed } : parsed;
+                break;
+              } catch { /* 试下一个起点 */ }
             }
-            console.log("MAXLINES_HITS=" + JSON.stringify(hits, null, 2));
+            if (!data) { console.log("MAXLINES_PARSE_FAILED"); process.exit(0); }
+            const diags = data.diagnostics ?? (Array.isArray(data) ? data : []);
+            const hits = [];
+            for (const d of diags) {
+              const msg = d.message ?? "";
+              if (!/too many lines/i.test(msg)) continue;
+              hits.push({ file: d.filename ?? d.filePath ?? d.labels?.[0]?.span?.file_name ?? "?", message: msg });
+            }
+            console.log("MAXLINES_COUNT=" + hits.length);
+            for (const h of hits) console.log("MAXLINES_HIT :: " + h.file + " :: " + h.message);
           '
