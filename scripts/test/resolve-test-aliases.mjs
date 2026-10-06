@@ -1,29 +1,34 @@
 /**
- * 单测的路径别名解析器（配合 `node --test` 使用）。
+ * 单测的 ESM 解析钩子（配合 `node --test` 使用）。
  *
- * 为什么需要：仓库根原先没有 tsconfig.json（只有 tsconfig.base.json），而各包的
- * tsconfig.json 的 `include` 只覆盖 `src/**`。Node 从被加载文件所在目录向上找最近的
- * tsconfig 来解析 paths，测试文件位于 `packages/<pkg>/test/`，于是上溯到仓库根却什么
- * 都没找到，`packages/ui` 源码里的 `@/lib/...` 直接 ERR_MODULE_NOT_FOUND。
+ * 解决两件事：
  *
- * `@/` 是全仓唯一的路径别名（仅 packages/ui/tsconfig.json 声明），权威定义仍在那里，
- * 这里只是让 Node 在测试环境下也能看见同一份映射。
+ * 1. `.js` 后缀的 import 指回磁盘上的 `.ts` / `.tsx`。
+ *    仓库遵循 NodeNext 的 ESM 约定——源码里互相 import 时写 `"./foo.js"`
+ *    （`packages/shared/src/index.ts` 就是 `from "./resource-budget.js"`），
+ *    但磁盘上只有 `foo.ts`。Node 原生类型剥离（Node 24 默认开启）只擦除类型语法，
+ *    **不改写 import 说明符**，因此直接跑会 ERR_MODULE_NOT_FOUND。
  *
- * 另一个职责：把 `.js` 后缀的 import 指回磁盘上的 `.ts` / `.tsx`。Node 原生类型剥离
- * （Node 24 默认开启）只擦除类型语法、不改写 import 说明符，所以测试里的
- * `"../src/foo.js"` 需要在这里映射到 `foo.ts`。带上 `.js` 候选是为了兼容构建产物形态。
+ * 2. `@/` 路径别名。
+ *    仅 `packages/ui/tsconfig.json` 声明了 `@/* → ./src/*`，是全仓唯一别名。
+ *    Node 不读 tsconfig 的 paths（那需要打包器或 loader 插件），所以测试环境要手工映射。
+ *
+ * 为什么用 `module.registerHooks` 而不是 monkey-patch `Module.defaultResolveFilename`：
+ * 仓库所有包都是 `"type": "module"`，走的是 **ESM loader**；`defaultResolveFilename`
+ * 是 CommonJS 的解析入口，ESM 根本不经过它，hook 上去不会生效。
+ * `registerHooks`（Node 22.15+/24）提供的 `resolve` 才是 ESM 同步解析链上的钩子。
  *
  * 用法：node --import ./scripts/test/resolve-test-aliases.mjs --test <files>
  */
 import { existsSync } from "node:fs";
+import { registerHooks } from "node:module";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import Module from "node:module";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const UI_SRC = join(repoRoot, "packages", "ui", "src");
 
-/** import 带 .js 后缀但磁盘是 .ts/.tsx —— 仓库遵循 NodeNext 的 ESM 约定。 */
+/** import 说明符写 `.js`，磁盘是 `.ts`/`.tsx`；同时支持目录的 index 形式。 */
 function resolveSourceFile(basePath) {
   const candidates = [
     basePath,
@@ -35,25 +40,30 @@ function resolveSourceFile(basePath) {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
-const originalResolveFilename = Module.defaultResolveFilename;
-Module.defaultResolveFilename = function patchedResolveFilename(specifier, ...rest) {
-  if (specifier.startsWith("@/")) {
-    const resolved = resolveSourceFile(join(UI_SRC, specifier.slice(2)));
-    if (resolved) {
-      return originalResolveFilename.call(this, resolved, ...rest);
-    }
-  }
-  // `.js` → `.ts` 回退：仅在原始解析失败后启用，避免改变已能正确解析的路径。
-  if (specifier.startsWith(".") && specifier.endsWith(".js")) {
-    try {
-      return originalResolveFilename.call(this, specifier, ...rest);
-    } catch (error) {
-      const resolved = resolveSourceFile(specifier.slice(0, -".js".length));
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    // 1) `@/` 别名
+    if (specifier.startsWith("@/")) {
+      const resolved = resolveSourceFile(join(UI_SRC, specifier.slice(2)));
       if (resolved) {
-        return originalResolveFilename.call(this, resolved, ...rest);
+        return { url: pathToFileURL(resolved).href, shortCircuit: true };
       }
-      throw error;
     }
-  }
-  return originalResolveFilename.call(this, specifier, ...rest);
-};
+
+    // 2) `.js` → `.ts`/`.tsx`。仅在默认解析失败后才回退，避免改变本来就能解析的路径
+    //    （例如指向真实构建产物的 .js）。
+    if (specifier.endsWith(".js")) {
+      try {
+        return nextResolve(specifier, context);
+      } catch (error) {
+        const resolved = resolveSourceFile(specifier.slice(0, -".js".length));
+        if (resolved) {
+          return { url: pathToFileURL(resolved).href, shortCircuit: true };
+        }
+        throw error;
+      }
+    }
+
+    return nextResolve(specifier, context);
+  },
+});
