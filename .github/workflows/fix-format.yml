@@ -12,8 +12,9 @@ on:
 
 permissions:
   contents: write
-  # pnpm fmt 会格式化 .github/workflows/*.yml，所以 GITHUB_TOKEN 必须具备 workflows: write，
-  # 否则 git push 这个包了格式改动的 commit 会被 GitHub 拒绝（remote rejected）。
+  # 允许推送包含 .github/workflows/*.yml 格式改动的 commit。
+  # 没有这一项，GitHub 会拒绝 GITHUB_TOKEN 修改 workflow 文件
+  # （refusing to allow a GitHub App to create or update workflow without workflows permission）。
   workflows: write
 
 jobs:
@@ -51,8 +52,14 @@ jobs:
         run: pnpm fmt
 
       # 把格式化结果 commit 回 main。幂等：如果文件原本格式都是对的，diff 为空，不提交。
+      #
+      # 用 gh CLI 而不是裸 git push：gh 会认 GH_TOKEN，并把凭据写进 git 的 http.extraheader，
+      # 这样带 workflows 权限的 github.token 才能真正提交含 .github/workflows 改动的 commit。
+      # 裸 git push 在这种情况下会被 GitHub 拒收。
       - name: Commit and push formatting fixes
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -60,7 +67,8 @@ jobs:
             Write-Host "已无格式问题，无需提交。"
             exit 0
           }
-          # 暂存所有已修改文件，排除 .github 之外的生成产物（如有意外变更会一并反映到 diff 里）
           git add -A
           git commit -m "style: apply oxfmt across repo to restore fmt:check green"
-          git push
+          # 关键：gh 提权，让 http.extraheader 带上 workflows 权限的 token
+          gh auth setup-git
+          git push origin HEAD:main
