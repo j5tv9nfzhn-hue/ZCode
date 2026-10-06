@@ -34,13 +34,28 @@ jobs:
           $env:HUSKY = "0"
           pnpm install --frozen-lockfile
 
-      # -D max-lines：只保留这条规则，让输出里只有超限文件。
-      # 不加 --quiet / 不截断，保证每个超限文件的路径都出现在日志里。
+      # -D max-lines：只保留这条规则。
+      # --format=github 会把每条诊断输出成 ::error file=...,line=... —— 但只有
+      # 真正 error 级别的行才带 file=。这里再额外用 --format=json 拿到结构化结果，
+      # 从中精确取出 max-lines 的那一行（含 file 与实际行数）。
       - name: List files exceeding max-lines
         shell: bash
         run: |
           set +e
-          pnpm exec oxlint -D max-lines --format=github 2>&1 | tee oxlint-maxlines.txt
-          echo "---- 上面每行的格式为 ::error file=...,line=... ----"
-          echo "==== 汇总：超限文件清单 ===="
-          grep -o 'file=[^,]*' oxlint-maxlines.txt | sort -u || echo "(无超限文件)"
+          pnpm exec oxlint -D max-lines --format=json > oxlint.json 2>/dev/null
+          node -e '
+            const fs = require("node:fs");
+            const raw = fs.readFileSync("oxlint.json", "utf8");
+            // json reporter 输出可能前面混有非 JSON 行，从第一个 [ 开始截取
+            const start = raw.indexOf("[");
+            if (start < 0) { console.log("NO_JSON_OUTPUT"); process.exit(0); }
+            let data;
+            try { data = JSON.parse(raw.slice(start)); }
+            catch (e) { console.log("JSON_PARSE_FAIL:", e.message); process.exit(0); }
+            const hits = [];
+            for (const d of data.diagnostics ?? []) {
+              if (!/too many lines/.test(d.message ?? "")) continue;
+              hits.push({ file: d.filename ?? d.filePath ?? "?", lines: d.code ?? "?", rule: d.rule ?? d.code });
+            }
+            console.log("MAXLINES_HITS=" + JSON.stringify(hits, null, 2));
+          '
