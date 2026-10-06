@@ -82,10 +82,7 @@ export function DiffsWorkerPoolProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <WorkerPoolContextProvider
-      poolOptions={poolOptions}
-      highlighterOptions={highlighterOptions}
-    >
+    <WorkerPoolContextProvider poolOptions={poolOptions} highlighterOptions={highlighterOptions}>
       <WorkerRenderOptionsSync highlighterOptions={highlighterOptions} />
       {children}
     </WorkerPoolContextProvider>

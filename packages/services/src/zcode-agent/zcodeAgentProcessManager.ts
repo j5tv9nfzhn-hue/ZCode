@@ -613,7 +613,9 @@ export class ZCodeAgentProcessManager {
     this.idleTimeoutMs =
       options?.idleTimeoutMs && options.idleTimeoutMs > 0 ? options.idleTimeoutMs : undefined;
     this.maxProcesses =
-      options?.maxProcesses && options.maxProcesses > 0 ? Math.floor(options.maxProcesses) : undefined;
+      options?.maxProcesses && options.maxProcesses > 0
+        ? Math.floor(options.maxProcesses)
+        : undefined;
     // 默认取空闲回收阈值的一半：一条已经在倒计时的空闲计时器，说明它至少空闲了这么久。
     this.reclaimMinIdleMs = Math.max(
       0,

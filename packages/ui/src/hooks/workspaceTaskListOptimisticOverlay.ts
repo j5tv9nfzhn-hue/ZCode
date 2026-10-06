@@ -105,7 +105,9 @@ export function useWorkspaceTaskOptimisticOverlayByWorkspaceKey(
                   task.model,
                   promotedDraft?.createdAt,
                   promotedDraft?.placement.type,
-                  promotedDraft?.placement.type === "group" ? promotedDraft.placement.groupId : null,
+                  promotedDraft?.placement.type === "group"
+                    ? promotedDraft.placement.groupId
+                    : null,
                 ];
               })
               .sort(([leftTaskId], [rightTaskId]) =>

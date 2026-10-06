@@ -1,4 +1,8 @@
-import type { ConversationRow, SessionPhase, SessionUsageState } from "@zcode/shared/zcode-protocol-v4";
+import type {
+  ConversationRow,
+  SessionPhase,
+  SessionUsageState,
+} from "@zcode/shared/zcode-protocol-v4";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { cn } from "@/components/lib/utils.js";
 import { formatCompactTokenNumber } from "@/lib/tokenNumberFormat.js";

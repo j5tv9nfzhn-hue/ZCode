@@ -767,45 +767,42 @@ export function SessionPane({
     supportedArtifactTypes: [],
   });
   const [sharePreflightVersion, setSharePreflightVersion] = useState(0);
-  const selectedShareTurnFingerprints = useMemo(
-    () => {
-      // 指纹按选中轮逐个 O(rows) 扫描；非分享态没有选中轮，
-      // 否则流式期每个 delta 帧都要白扫一遍整窗。
-      if (!shareActive || selectedShareProductTurnIds.length === 0) {
-        return EMPTY_SHARE_TURN_FINGERPRINTS;
-      }
-      return new Map(
-        selectedShareProductTurnIds.map((productTurnId) => [
+  const selectedShareTurnFingerprints = useMemo(() => {
+    // 指纹按选中轮逐个 O(rows) 扫描；非分享态没有选中轮，
+    // 否则流式期每个 delta 帧都要白扫一遍整窗。
+    if (!shareActive || selectedShareProductTurnIds.length === 0) {
+      return EMPTY_SHARE_TURN_FINGERPRINTS;
+    }
+    return new Map(
+      selectedShareProductTurnIds.map((productTurnId) => [
+        productTurnId,
+        conversationShareTurnFingerprint(
+          snapshot?.rows.window ?? [],
           productTurnId,
-          conversationShareTurnFingerprint(
-            snapshot?.rows.window ?? [],
-            productTurnId,
-            workspacePath,
-            {
-              workspaceKey: workspaceIdentity?.trim() || workspacePath,
-              remoteSessionId: remoteSessionId ?? "",
-              sessionId: sessionId ?? "",
-              revision: snapshot?.revision,
-              logEpoch: snapshot?.logEpoch,
-              capabilitiesFingerprint: sharePreflightMetaRef.current.capabilitiesFingerprint,
-            },
-          ),
-        ]),
-      );
-    },
-    [
-      remoteSessionId,
-      selectedShareProductTurnIds,
-      sessionId,
-      shareActive,
-      sharePreflightVersion,
-      snapshot?.logEpoch,
-      snapshot?.revision,
-      snapshot?.rows.window,
-      workspaceIdentity,
-      workspacePath,
-    ],
-  );
+          workspacePath,
+          {
+            workspaceKey: workspaceIdentity?.trim() || workspacePath,
+            remoteSessionId: remoteSessionId ?? "",
+            sessionId: sessionId ?? "",
+            revision: snapshot?.revision,
+            logEpoch: snapshot?.logEpoch,
+            capabilitiesFingerprint: sharePreflightMetaRef.current.capabilitiesFingerprint,
+          },
+        ),
+      ]),
+    );
+  }, [
+    remoteSessionId,
+    selectedShareProductTurnIds,
+    sessionId,
+    shareActive,
+    sharePreflightVersion,
+    snapshot?.logEpoch,
+    snapshot?.revision,
+    snapshot?.rows.window,
+    workspaceIdentity,
+    workspacePath,
+  ]);
   const eligibleShareProductTurnIds = useMemo(() => {
     // 同 shareRenderUnits：非分享态没有任何消费者，不做 O(rows) 的 rowId 建图。
     if (!shareActive) return EMPTY_SHARE_PRODUCT_TURN_IDS;

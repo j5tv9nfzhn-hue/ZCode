@@ -78,12 +78,11 @@ The runtime accepts four entries: `app-server` / `agent-server` (the protocol se
 
 The root [.env.example](.env.example) provides sample service URLs and build configuration. Copy it to `.env` as needed and place local overrides in `.env.local`. Select the Desktop development environment with `dev:desktop:test` or `dev:desktop:prod`.
 
-| Setting                              | Purpose                                                                                 |
-| ------------------------------------ | --------------------------------------------------------------------------------------- |
-| `ZCODE_DATA_BASE_DIR`                | Base directory for application data, stored under its `.zcode/` subdirectory            |
+| Setting               | Purpose                                                                      |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `ZCODE_DATA_BASE_DIR` | Base directory for application data, stored under its `.zcode/` subdirectory |
 
 | `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` | Path to a local provider configuration file; uses the built-in configuration when unset |
-
 
 Runtime variables can be set explicitly in the environment of the startup command. See [config/README.md](config/README.md) for the default configuration shipped with the client.
 
@@ -114,7 +113,7 @@ The default target is macOS arm64, and the default output directory is `packages
 | `packages/services`                                  | Business services and persistence                                                       |
 | `packages/shared`, `packages/rpc`, `packages/client` | Shared protocols and types, RPC framework, and Agent client SDK                         |
 | `packages/provider`, `packages/provider-node`        | Common provider capabilities and Node implementations                                   |
-| `apps/zcode-cli`                                     | Agent runtime: protocol server, plugin host, dynamic workflow, and tools                 |
+| `apps/zcode-cli`                                     | Agent runtime: protocol server, plugin host, dynamic workflow, and tools                |
 | `scripts`, `config`, `third-party`                   | Build and maintenance scripts, built-in configuration, and third-party notice materials |
 
 ## Project Notice

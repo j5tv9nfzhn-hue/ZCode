@@ -24,7 +24,15 @@ import {
   TID_MODEL_PROVIDER_NAME_INPUT,
   testId,
 } from "@zcode/shared";
-import { InfoIcon, LockKeyholeIcon, Plus, Pencil, Trash2, MoreHorizontal, Download } from "lucide-react";
+import {
+  InfoIcon,
+  LockKeyholeIcon,
+  Plus,
+  Pencil,
+  Trash2,
+  MoreHorizontal,
+  Download,
+} from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import {
@@ -487,10 +495,7 @@ export function ProviderModelsSection({
   );
   const [importingModels, setImportingModels] = useState(false);
 
-  const existingModelIds = useMemo(
-    () => new Set(models.map((model) => model.modelId)),
-    [models],
-  );
+  const existingModelIds = useMemo(() => new Set(models.map((model) => model.modelId)), [models]);
 
   const handleDiscoverModels = useCallback(async () => {
     if (discovering) return;
@@ -654,9 +659,7 @@ export function ProviderModelsSection({
               size="default"
               className="rounded-lg"
               disabled={
-                importingModels ||
-                discoverError !== null ||
-                selectedDiscoveredIds.size === 0
+                importingModels || discoverError !== null || selectedDiscoveredIds.size === 0
               }
               onClick={() => void handleImportDiscoveredModels()}
             >

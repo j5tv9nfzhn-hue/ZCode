@@ -1,5 +1,8 @@
 import { createServiceLogger } from "../logger/serviceLogger.js";
-import type { ProviderModelDiscoverer, ProviderModelDiscoveryResult } from "./providerFacadeServices.js";
+import type {
+  ProviderModelDiscoverer,
+  ProviderModelDiscoveryResult,
+} from "./providerFacadeServices.js";
 
 const log = createServiceLogger("provider-model-discovery");
 

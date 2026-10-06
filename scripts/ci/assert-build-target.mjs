@@ -127,7 +127,9 @@ async function assertArtifactsAreWindowsOnly(distDir) {
   try {
     entries = await readdir(absoluteDist, { withFileTypes: true });
   } catch (error) {
-    fail([`读取产物目录失败：${absoluteDist}（${error instanceof Error ? error.message : error}）`]);
+    fail([
+      `读取产物目录失败：${absoluteDist}（${error instanceof Error ? error.message : error}）`,
+    ]);
     return;
   }
 

@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { ConversationRow, SessionPhase, SessionUsageState } from "@zcode/shared/zcode-protocol-v4";
+import type {
+  ConversationRow,
+  SessionPhase,
+  SessionUsageState,
+} from "@zcode/shared/zcode-protocol-v4";
 import { useNowTicker } from "@/components/workflow-graph/use-now-ticker.js";
 
 /**

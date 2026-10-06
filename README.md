@@ -11,8 +11,6 @@
   简体中文 | <a href="README.en.md">English</a>
 </p>
 
-
-
 ZCode 是 AI 编程工作台，本仓库只交付桌面端。浏览器界面与独立终端 Agent 发行产品已移除；`apps/zcode-cli` 保留为桌面端启动的 Agent 运行时源码。
 
 ## 更新
@@ -85,9 +83,9 @@ node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
 
 根目录 [.env.example](.env.example) 提供服务地址与构建配置示例，可按需复制到 `.env`，本地覆盖放入 `.env.local`。Desktop 的开发环境通过 `dev:desktop:test` / `dev:desktop:prod` 选择。
 
-| 配置                                 | 用途                                             |
-| ------------------------------------ | ------------------------------------------------ |
-| `ZCODE_DATA_BASE_DIR`                | 应用数据基目录，数据写入其下的 `.zcode/`         |
+| 配置                  | 用途                                     |
+| --------------------- | ---------------------------------------- |
+| `ZCODE_DATA_BASE_DIR` | 应用数据基目录，数据写入其下的 `.zcode/` |
 
 | `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` | 本地 Provider 配置文件路径；未设置时使用内置配置 |
 
@@ -118,16 +116,16 @@ sudo xattr -rd com.apple.quarantine /Applications/ZCode.app
 
 ## 仓库结构
 
-| 目录                                                 | 职责                                       |
-| ---------------------------------------------------- | ------------------------------------------ |
-| `packages/desktop`                                   | Electron Main、Host、Renderer 与桌面打包   |
-| `packages/server`                                    | 远程工作区后端（SSH/WSL/Docker）与远程 stdio 服务端 |
-| `packages/ui`                                        | 共享 React 组件、hooks 与 Zustand 状态     |
-| `packages/services`                                  | 业务服务与持久化                           |
-| `packages/shared`、`packages/rpc`、`packages/client` | 共享协议和类型、RPC 框架、Agent 客户端 SDK |
-| `packages/provider`、`packages/provider-node`        | Provider 公共能力与 Node 实现              |
+| 目录                                                 | 职责                                                  |
+| ---------------------------------------------------- | ----------------------------------------------------- |
+| `packages/desktop`                                   | Electron Main、Host、Renderer 与桌面打包              |
+| `packages/server`                                    | 远程工作区后端（SSH/WSL/Docker）与远程 stdio 服务端   |
+| `packages/ui`                                        | 共享 React 组件、hooks 与 Zustand 状态                |
+| `packages/services`                                  | 业务服务与持久化                                      |
+| `packages/shared`、`packages/rpc`、`packages/client` | 共享协议和类型、RPC 框架、Agent 客户端 SDK            |
+| `packages/provider`、`packages/provider-node`        | Provider 公共能力与 Node 实现                         |
 | `apps/zcode-cli`                                     | Agent 运行时（协议服务端、plugin-host、工作流、工具） |
-| `scripts`、`config`、`third-party`                   | 构建维护脚本、内置配置与第三方声明材料     |
+| `scripts`、`config`、`third-party`                   | 构建维护脚本、内置配置与第三方声明材料                |
 
 ## 项目声明
 

@@ -38,20 +38,22 @@ export function selectLruReclaimWorkspaceKeys(input: SelectLruReclaimInput): str
     return [];
   }
   const minIdleMs = Math.max(0, input.minIdleMs);
-  return input.candidates
-    .filter(
-      (candidate) =>
-        candidate.workspaceKey !== input.excludeWorkspaceKey &&
-        candidate.idle &&
-        input.now - candidate.lastActivityAt >= minIdleMs,
-    )
-    // lastActivityAt 相同时按 workspaceKey 排序：回收顺序必须与 Map 插入顺序无关，
-    // 否则同一份输入在不同机器上可能选出不同的进程，日志无法复现。
-    .sort((left, right) =>
-      left.lastActivityAt === right.lastActivityAt
-        ? left.workspaceKey.localeCompare(right.workspaceKey)
-        : left.lastActivityAt - right.lastActivityAt,
-    )
-    .slice(0, input.reclaimCount)
-    .map((candidate) => candidate.workspaceKey);
+  return (
+    input.candidates
+      .filter(
+        (candidate) =>
+          candidate.workspaceKey !== input.excludeWorkspaceKey &&
+          candidate.idle &&
+          input.now - candidate.lastActivityAt >= minIdleMs,
+      )
+      // lastActivityAt 相同时按 workspaceKey 排序：回收顺序必须与 Map 插入顺序无关，
+      // 否则同一份输入在不同机器上可能选出不同的进程，日志无法复现。
+      .sort((left, right) =>
+        left.lastActivityAt === right.lastActivityAt
+          ? left.workspaceKey.localeCompare(right.workspaceKey)
+          : left.lastActivityAt - right.lastActivityAt,
+      )
+      .slice(0, input.reclaimCount)
+      .map((candidate) => candidate.workspaceKey)
+  );
 }
