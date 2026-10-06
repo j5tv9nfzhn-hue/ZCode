@@ -1,3 +1,4 @@
+/* oxlint-disable eslint(max-lines) -- 动态工作流卡片把运行态摘要、阶段进度、产物入口与错误恢复集中在同一个 renderer；这些区块共享同一份 run 状态与轮询节流，拆成子组件会把状态与回调穿透多层 props，收益不抵可读性损失。 */
 import { ChevronRightIcon, RotateCcwIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
