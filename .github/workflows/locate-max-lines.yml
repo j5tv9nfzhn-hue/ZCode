@@ -1,0 +1,46 @@
+name: Locate max-lines offender
+
+# 临时排查用：oxlint 的默认 reporter 在 GitHub Actions 日志里不输出文件名，
+# 无法判断 405 行到底落在哪个文件。本 workflow 让 oxlint 以默认（带路径）格式
+# 输出，并单独跑一次只关心 max-lines 的检查，把超限文件名打进日志。
+#
+# 定位完成后应删除本文件。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.33.2"
+          run_install: false
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          $env:HUSKY = "0"
+          pnpm install --frozen-lockfile
+
+      # -D max-lines：只保留这条规则，让输出里只有超限文件。
+      # 不加 --quiet / 不截断，保证每个超限文件的路径都出现在日志里。
+      - name: List files exceeding max-lines
+        shell: bash
+        run: |
+          set +e
+          pnpm exec oxlint -D max-lines --format=github 2>&1 | tee oxlint-maxlines.txt
+          echo "---- 上面每行的格式为 ::error file=...,line=... ----"
+          echo "==== 汇总：超限文件清单 ===="
+          grep -o 'file=[^,]*' oxlint-maxlines.txt | sort -u || echo "(无超限文件)"
