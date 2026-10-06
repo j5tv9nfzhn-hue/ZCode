@@ -1,21 +1,32 @@
 name: Fix formatting
 
-# 一次性格式化 workflow：在 CI 云端跑 `pnpm fmt` 把全仓 2791 个不合规文件的格式
-# 统一成 oxfmt 的风格，然后 commit 回 main。与 fix-lockfile 同理，把本机不该跑的
-# 命令搬到 CI。
+# 一次性格式化 workflow：在 CI 云端跑 `pnpm fmt`，把结果导出成 patch artifact。
 #
-# 唯一性：只在本 workflow 里执行 `pnpm fmt`（没有 --check）。主流程 ci.yml 的
-# `pnpm fmt:check` 保持。跑完后全仓格式合规，fmt:check 恢复绿灯。
+# ── 为什么不在 CI 里直接 push ──
+# `pnpm fmt` 会连 `.github/workflows/*.yml` 一起格式化。GitHub Actions 的
+# `permissions:` 白名单里**没有** `workflows` 这个键（actions/attestations/checks/
+# contents/deployments/discussions/id-token/issues/models/packages/pages/
+# pull-requests/security-events/statuses），而 workflow 文件的修改权由 token 的
+# `workflow` scope 决定 —— `GITHUB_TOKEN` 永远不具备该 scope。因此任何 CI 内的
+# `git push` 都会被拒：
+#   refusing to allow a GitHub App to create or update workflow
+#   `.github/workflows/xxx.yml` without `workflows` permission
+#
+# 本机 `gh` 已登录，token 带 `repo` + `workflow` scope，具备提交 workflow 文件的权限。
+# 所以分工是：CI 只做「格式化 + 导出改动」，由本机 gh 完成提权推送。
+#
+# 用法：
+#   1. 手动触发本 workflow；
+#   2. 下载 oxfmt-format-patch artifact（内含 format.patch 与格式化统计）；
+#   3. 在仓库根执行 git apply format.patch 后提交推送（或由本 agent 代劳）。
+#
+# 一次性用途：跑完让 fmt:check 恢复绿色后，本文件与 fix-lockfile.yml 一并删除。
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  # 允许推送包含 .github/workflows/*.yml 格式改动的 commit。
-  # 没有这一项，GitHub 会拒绝 GITHUB_TOKEN 修改 workflow 文件
-  # （refusing to allow a GitHub App to create or update workflow without workflows permission）。
-  workflows: write
+  contents: read
 
 jobs:
   fix:
@@ -45,30 +56,34 @@ jobs:
           pnpm install --frozen-lockfile
 
       # ── 全量格式化 ──
-      # 前置:ci.yml 的 fmt:check 在 2862 文件上发现 2791 份格式问题（oxfmt 风格漂移）。
-      # 本步骤跑通过后，fmt:check 应该转为通过。
+      # 背景：ci.yml 的 fmt:check 在 2862 个文件里报出 2791 份 oxfmt 格式漂移。
       - name: Format all source files
         shell: pwsh
         run: pnpm fmt
 
-      # 把格式化结果 commit 回 main。幂等：如果文件原本格式都是对的，diff 为空，不提交。
-      #
-      # 用 gh CLI 而不是裸 git push：gh 会认 GH_TOKEN，并把凭据写进 git 的 http.extraheader，
-      # 这样带 workflows 权限的 github.token 才能真正提交含 .github/workflows 改动的 commit。
-      # 裸 git push 在这种情况下会被 GitHub 拒收。
-      - name: Commit and push formatting fixes
+      # 导出改动为 patch。本机用 git apply 就能复现同样的工作区状态。
+      - name: Export formatting diff as patch
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if (git diff --quiet) {
-            Write-Host "已无格式问题，无需提交。"
-            exit 0
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          # 二进制文件（图标、字体等）无法用文本 patch 表达；单独列出以便人工确认。
+          $binary = @(git diff --numstat | Where-Object { $_ -match '^-\s+-' })
+          if ($binary.Count -gt 0) {
+            Write-Host "警告：以下路径是二进制差异，文本 patch 无法覆盖："
+            $binary | ForEach-Object { Write-Host "  $_" }
+            $binary | Out-File -Encoding utf8 out/binary-changes.txt
           }
-          git add -A
-          git commit -m "style: apply oxfmt across repo to restore fmt:check green"
-          # 关键：gh 提权，让 http.extraheader 带上 workflows 权限的 token
-          gh auth setup-git
-          git push origin HEAD:main
+          # `--binary` 让 git 对可应用的二进制差异生成 literal patch。
+          git diff --binary HEAD | Out-File -Encoding utf8 out/format.patch
+          $changed = @(git diff --name-only HEAD).Count
+          "changed_files=$changed" | Out-File -Encoding utf8 -Append out/format.patch
+          Write-Host "格式化影响文件数: $changed"
+
+      # 关键：不要设置 retention-days 上限，让 artifact 默认保留，够本机下载即可。
+      - name: Upload formatting patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: oxfmt-format-patch
+          path: out/
+          if-no-files-found: error
+          compression-level: 0
