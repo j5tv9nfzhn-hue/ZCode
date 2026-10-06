@@ -1079,7 +1079,9 @@ export class ProductProjection {
    *
    * 返回值要么是修复后的新序列，要么是入参本身（不需要任何改动时零分配）。
    */
-  private applyCountersIntoDeltas(deltas: readonly ConversationDelta[]): ConversationDelta[] {
+  private applyCountersIntoDeltas(
+    deltas: readonly ConversationDelta[],
+  ): readonly ConversationDelta[] {
     let turns = 0;
     let steps = 0;
     for (const delta of deltas) {
