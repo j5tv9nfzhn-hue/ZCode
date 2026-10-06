@@ -41,6 +41,18 @@ const ACCEPTED_ARCH_ALIASES = new Set(["x64", "amd64", "x86_64"]);
 const ALLOWED_ARTIFACT_EXTENSIONS = [".exe"];
 
 /**
+ * 产物文件名里禁止出现的标记。
+ *
+ * `_TEST` 后缀来自 `resolveDesktopArtifactSuffix`（后端环境非 production 时追加），
+ * `Preview` 来自 `resolveDesktopProductIdentity` 的 flavor。两者都意味着「这不是你要
+ * 装的那个包」：身份变成 ZCode Preview / appId dev.zcode.app.preview，且连的是测试
+ * 后端。它们的来源是 fail-safe 默认值——`ZCODE_ENV` 未设置或拼错就落到 test，
+ * 而这种错误在日志里完全看不出来（打包会成功、产物名只是多个后缀）。
+ * 所以在这里机械拒绝，而不是靠注释提醒。
+ */
+const FORBIDDEN_IDENTITY_TOKENS = ["_test", "preview"];
+
+/**
  * 一旦出现就说明产物越界。electron-builder 的 mac/linux target 实测扩展名都在这里，
  * 另外显式拦 dmg 与 zip，避免有人给 win 段加 zip target 时悄悄带出第二个平台的格式。
  */
@@ -154,6 +166,14 @@ async function assertArtifactsAreWindowsOnly(distDir) {
     for (const token of FORBIDDEN_ARCH_TOKENS) {
       if (lower.includes(token)) {
         violations.push(`${fileName}：文件名含非 x64 架构标记 "${token}"`);
+      }
+    }
+    for (const token of FORBIDDEN_IDENTITY_TOKENS) {
+      if (lower.includes(token)) {
+        violations.push(
+          `${fileName}：文件名含 "${token}"，说明产物是 Preview / 测试后端包而非正式版。` +
+            "检查 job env 是否设置了 ZCODE_ENV=production（它对未知值 fail-safe 到 test）。",
+        );
       }
     }
     for (const token of FORBIDDEN_PLATFORM_TOKENS) {

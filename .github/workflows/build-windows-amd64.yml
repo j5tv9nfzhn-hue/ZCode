@@ -45,6 +45,12 @@ jobs:
     env:
       ZCODE_TARGET_OS: win32
       ZCODE_TARGET_ARCH: x64
+      # ZCODE_ENV 决定两件必须显式声明的事，缺省会静默产出「错的包」：
+      # 1. 产品身份（desktop-product-identity.mjs:32）：只有等于 production 才是正式
+      #    `ZCode`（appId dev.zcode.app），否则一律 `ZCode Preview` + 产物名带 _TEST 后缀；
+      # 2. 后端环境（builtin-provider-config.mjs）：决定连哪套服务端。
+      # 该文件对未知值 fail-safe 到 test，所以不设就等于打测试包。
+      ZCODE_ENV: production
       # 不做签名：自用产物。关闭自动发现证书，避免 runner 镜像上任何证书被意外使用。
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       # turbo 在 CI 上需要关闭遥测与交互输出，否则日志会被污染。
