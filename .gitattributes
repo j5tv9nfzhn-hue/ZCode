@@ -2,6 +2,17 @@
 *.mjs text eol=lf
 *.sh  text eol=lf
 
+# 全仓文本统一 LF。
+#
+# 起因：oxfmt 按 LF 判定格式，而 Windows 上 core.autocrlf=true 会在 checkout 时把
+# .ts/.tsx/.yml 等转成 CRLF，于是 `pnpm fmt:check` 在 CI 上把几乎每个文件都报成
+# "需要格式化"（2862 个文件里 2791 份）。这是行尾假阳性，不是真的格式漂移。
+#
+# `* text=auto` 让 git 自行判定文本/二进制并对文本统一存 LF；`eol=lf` 保证工作区
+# 也检出为 LF，使本地与 CI 看到完全相同的字节，oxfmt 的判定不再随平台漂移。
+# 二进制文件由 auto 判定排除；下方 -text 条目进一步显式豁免需要按字节保存的文件。
+* text=auto eol=lf
+
 # 上游许可原文与生成的声明按字节保存，不能自动转换换行或裁剪空白。
 # 原文中的 License / ======= 是 Markdown 标题，不是合并冲突。
 THIRD-PARTY-NOTICES.md -text -whitespace conflict-marker-size=32 linguist-generated=true

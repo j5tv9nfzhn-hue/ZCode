@@ -61,23 +61,26 @@ jobs:
         shell: pwsh
         run: pnpm fmt
 
-      # 导出改动为 patch。本机用 git apply 就能复现同样的工作区状态。
+      # 导出改动为 patch。
+      #
+      # ⚠️ 必须用 bash 的字节级重定向，不能用 pwsh 的 `| Out-File`：
+      # PowerShell 会按自己的行尾重写每一行，把 git diff 输出的 LF 变成 CRLF，
+      # patch 里记录的"旧内容"因此多出 \r，本机 git apply 时必然 "patch does not apply"。
+      # `>` 在 bash 下是字节流直通，patch 与 git diff 原始输出逐字节一致。
       - name: Export formatting diff as patch
-        shell: pwsh
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force -Path out | Out-Null
+          mkdir -p out
           # 二进制文件（图标、字体等）无法用文本 patch 表达；单独列出以便人工确认。
-          $binary = @(git diff --numstat | Where-Object { $_ -match '^-\s+-' })
-          if ($binary.Count -gt 0) {
-            Write-Host "警告：以下路径是二进制差异，文本 patch 无法覆盖："
-            $binary | ForEach-Object { Write-Host "  $_" }
-            $binary | Out-File -Encoding utf8 out/binary-changes.txt
-          }
+          git diff --numstat | awk '$1=="-" && $2=="-" {print $3}' > out/binary-changes.txt || true
+          if [ -s out/binary-changes.txt ]; then
+            echo "警告：以下路径是二进制差异，文本 patch 无法覆盖："
+            cat out/binary-changes.txt
+          fi
           # `--binary` 让 git 对可应用的二进制差异生成 literal patch。
-          git diff --binary HEAD | Out-File -Encoding utf8 out/format.patch
-          $changed = @(git diff --name-only HEAD).Count
-          "changed_files=$changed" | Out-File -Encoding utf8 -Append out/format.patch
-          Write-Host "格式化影响文件数: $changed"
+          git diff --binary HEAD > out/format.patch
+          echo "changed_files=$(git diff --name-only HEAD | wc -l)" > out/format-stats.txt
+          cat out/format-stats.txt
 
       # 关键：不要设置 retention-days 上限，让 artifact 默认保留，够本机下载即可。
       - name: Upload formatting patch
