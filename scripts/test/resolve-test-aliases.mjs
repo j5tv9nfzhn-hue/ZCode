@@ -55,17 +55,20 @@ registerHooks({
       }
     }
 
-    // 2) `.js` → `.ts`/`.tsx`。仅在默认解析失败后才回退，避免改变本来就能解析的路径
-    //    （例如指向真实构建产物的 .js）。
+    // 2) `.js` → `.ts` / `.tsx`
+    // 必须**前置**判断而不是"默认解析失败再回退"：nextResolve 对不存在的文件不一定
+    // 抛异常，可能直接返回一个未经验证的 URL，错误延后到加载阶段才暴露，那时已经
+    // 拿不到机会纠正。先看磁盘上有没有对应的 .ts，有就直接短路。
     if (specifier.endsWith(".js")) {
-      try {
-        return nextResolve(specifier, context);
-      } catch (error) {
-        const resolved = resolveSourceFile(specifier.slice(0, -".js".length));
-        if (resolved) {
-          return { url: pathToFileURL(resolved).href, shortCircuit: true };
-        }
-        throw error;
+      const base = specifier.slice(0, -".js".length);
+      // 相对说明符要相对父模块 URL 解析，不能直接当文件系统路径用
+      const parentPath = context.parentURL?.startsWith("file:")
+        ? fileURLToPath(context.parentURL)
+        : join(repoRoot, "unknown");
+      const absoluteBase = base.startsWith(".") ? join(dirname(parentPath), base) : base;
+      const resolved = resolveSourceFile(absoluteBase);
+      if (resolved) {
+        return { url: pathToFileURL(resolved).href, shortCircuit: true };
       }
     }
 
