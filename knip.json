@@ -7,8 +7,11 @@
         ".release-it.mjs",
         ".vscode/*.mjs",
         "scripts/check-workspace-freshness.mjs",
-        "scripts/mise-run.mjs"
-      ]
+        "scripts/mise-run.mjs",
+        "packages/*/test/*.test.ts",
+        "packages/*/test/**/*.test.ts"
+      ],
+      "project": ["scripts/**/*.mjs", "scripts/**/*.cjs"]
     },
     "packages/desktop": {
       "entry": [
@@ -17,7 +20,8 @@
         "src/renderer/*.html",
         "src/renderer/cuaPermissionPanel.ts",
         "src/renderer/src/resource-manager.tsx"
-      ]
+      ],
+      "project": ["scripts/**/*.mjs", "scripts/**/*.cjs"]
     },
     "packages/server": {
       "entry": ["src/entry-stdio.ts", "build-remote.ts"]
@@ -25,9 +29,29 @@
     "packages/services": {
       "entry": ["src/index.ts", "src/storage/module.ts"]
     },
+    "packages/ui": {
+      "entry": ["src/index.ts", "test/*.test.ts"]
+    },
     "apps/zcode-cli/packages/browser-use-plugin": {
       "entry": ["src/browser-client.ts"]
     }
   },
-  "ignore": [".agents/**", "docs/**", "packages/ui/src/components/**"]
+  "ignore": [
+    ".agents/**",
+    "docs/**",
+    "packages/ui/src/components/**",
+    // 构建产物目录：node-repl-host 的 dist-types 由 tsc 生成，不是源码。
+    // 只忽略 dist-types，不动其它 .d.ts——本仓库有手写的 ambient 声明
+    // （globals.d.ts / node-forge.d.ts / yazl.d.ts / assets.d.ts / css.d.ts /
+    // env.d.ts / electron-webview.d.ts），它们必须继续参与依赖分析。
+    "**/dist-types/**",
+    // 与 .ts 源码同名的编译产物（armsRumShared.d.ts / .js / .map 等），
+    // 由 tsc 就地输出，属于生成物。
+    "packages/desktop/src/shared/armsRumShared.d.ts",
+    "packages/desktop/src/shared/armsRumShared.d.ts.map",
+    "packages/desktop/src/shared/armsRumShared.js",
+    "packages/desktop/src/shared/armsRumShared.js.map",
+    // 由 .mjs 源生成的声明产物
+    "packages/desktop/scripts/*.d.mts"
+  ]
 }
