@@ -12,6 +12,9 @@ on:
 
 permissions:
   contents: write
+  # pnpm fmt 会格式化 .github/workflows/*.yml，所以 GITHUB_TOKEN 必须具备 workflows: write，
+  # 否则 git push 这个包了格式改动的 commit 会被 GitHub 拒绝（remote rejected）。
+  workflows: write
 
 jobs:
   fix:
