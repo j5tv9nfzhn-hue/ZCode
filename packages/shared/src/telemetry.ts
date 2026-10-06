@@ -3,7 +3,6 @@ export interface TelemetryRendererContext {
   clientLanguage: string;
   screenResolution: string;
 }
-
 export interface TelemetryEventPayload {
   elementName: string;
   eventRegion: string;
@@ -106,19 +105,25 @@ interface TelemetryWindowLike {
   screen: TelemetryScreenLike;
 }
 
+/**
+ * 采集上报用的渲染进程上下文。
+ *
+ * ⚠️ 本地自用分支已**停止采集**这三个字段。
+ *
+ * 原实现会读取 `Intl.DateTimeFormat().resolvedOptions().timeZone`（时区，可推断到
+ * 地理区域）、`navigator.locale`（语言）与 `screen.width x height`（屏幕分辨率），
+ * 三者组合构成可跨会话关联的**设备指纹**，并随每条事件上报。
+ *
+ * 现在一律返回空串：接口形状保持不变（调用方与 header 构造不需要改），但不再从
+ * 运行时读取任何可用于定位或指纹识别的值。配合 `ZCODE_TELEMETRY_ENABLED=false`
+ * 构成双重关闭——即使将来有人误开总开关，这里也不会重新产生定位数据。
+ */
 export function collectTelemetryRendererContext(
-  options?: TelemetryWindowLike,
+  _options?: TelemetryWindowLike,
 ): TelemetryRendererContext {
-  const resolvedIntlOptions =
-    typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions() : undefined;
-  const timeZone = options?.timeZone ?? resolvedIntlOptions?.timeZone ?? "UTC";
-  const clientLanguage = options?.intlLocale ?? resolvedIntlOptions?.locale ?? "en-US";
-  const runtimeScreen = (globalThis as { screen?: TelemetryScreenLike }).screen;
-  const screen = options?.screen ?? runtimeScreen ?? { width: 0, height: 0 };
-
   return {
-    clientTimezone: timeZone,
-    clientLanguage,
-    screenResolution: `${screen.width}x${screen.height}`,
+    clientTimezone: "",
+    clientLanguage: "",
+    screenResolution: "",
   };
 }

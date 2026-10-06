@@ -20,15 +20,12 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { SSHDialog } from "@/SSHDialog.js";
 import { SettingsPage } from "@/SettingsPage.js";
 import { CodingPlanUpgradeDialogProvider } from "@/settings/CodingPlanUpgradeDialogProvider.js";
-import { WelcomeScreen, type LoginCompleteReason } from "@/WelcomeScreen.js";
 import { setDefaultFileDisplayBasePath } from "@/lib/fileDisplay.js";
 import { readRendererLaunchTimings, shouldReportLaunchToInput } from "@/lib/launchToInputReport.js";
 import { reportUiLaunchToInput } from "@/lib/uiPerfArmsTelemetry.js";
 import { countAllUnreadTasks } from "@/lib/unreadTaskCount.js";
 import {
   isProviderStartupSyncPending,
-  shouldEnableProviderAvailabilityLoginEntryGuard,
-  shouldResolveProviderStartupState,
   shouldBlockRootRender,
   shouldShowRootStartupLoading,
   shouldOpenFallbackWorkspaceAfterCreate,
@@ -42,7 +39,6 @@ import { logger } from "@/logger.js";
 import { RootShell } from "@/root/RootShell.js";
 import { RootWorkspaceContent } from "@/root/RootWorkspaceContent.js";
 import { resolveRootWorkspaceShellTarget } from "@/root/rootWorkspaceShellTarget.js";
-import { OccupationOnboarding } from "@/onboarding/OccupationOnboarding.js";
 import { OnboardingDialog } from "@/onboarding/OnboardingDialog.js";
 import { useRemoteWorkspaceHistory } from "@/root/useRemoteWorkspaceHistory.js";
 import { useRemoteWorkspaceTabLifecycle } from "@/root/useRemoteWorkspaceTabLifecycle.js";
@@ -50,7 +46,6 @@ import { useRootProviderStateRefresh } from "@/root/useRootProviderStateRefresh.
 import { useModelSelectionServiceView } from "@/hooks/useModelSelectionView.js";
 import { useRootProviderSettingsSnapshot } from "@/root/useRootProviderSettingsSnapshot.js";
 import { useRootOAuthEffects } from "@/root/useRootOAuthEffects.js";
-import { consumeZcodeJwtInvalidRestartMarker } from "@/root/zcodeJwtInvalidRestartMarker.js";
 import { useDesktopNativeThemeSync } from "@/root/useDesktopNativeThemeSync.js";
 import { useRootPlatformEffects } from "@/root/useRootPlatformEffects.js";
 import { useRootWorkspaceActions } from "@/root/useRootWorkspaceActions.js";
@@ -74,7 +69,6 @@ import { setSessionOpenArmsReporter } from "@/lib/sessionOpenArmsTelemetry.js";
 import { setSendFunnelArmsReporter } from "@/lib/sendFunnelArmsTelemetry.js";
 import { RootStartupLoading } from "@/root/RootStartupLoading.js";
 import { resolveProviderAvailabilityState } from "@/lib/modelProviderAvailability.js";
-import { useProviderAvailabilityLoginEntryGuard } from "@/root/useProviderAvailabilityLoginEntryGuard.js";
 import { ensureProviderFamilyDomainMigration } from "@/lib/providerFamilyDomainMigration.js";
 import { useSettings } from "@/hooks/useSettingService.js";
 import { CLOSE_ACTIVE_CONTEXT_REQUEST_EVENT } from "@/lib/closeActiveContext.js";
@@ -89,13 +83,6 @@ interface RemoteConnectionOpenPreference {
   preferredKind?: RemoteTarget["kind"];
   preferredWslDistro?: string;
 }
-
-type WelcomeScreenOpenReason =
-  | "startup-provider-required"
-  | "manual-login"
-  | "provider-request"
-  | "logout-provider-required"
-  | "session-expired";
 
 /**
  * Root —— 应用根组件
@@ -202,13 +189,8 @@ function RootInner({
     refresh: refreshAppSettings,
     update: updateAppSettings,
   } = useSettings();
-  const [welcomeScreenOpenReason, setWelcomeScreenOpenReason] =
-    useState<WelcomeScreenOpenReason | null>(() =>
-      consumeZcodeJwtInvalidRestartMarker() ? "session-expired" : null,
-    );
   const [providerFamilyDomainMigrationComplete, setProviderFamilyDomainMigrationComplete] =
     useState(false);
-  const loginEntryRequest = useZCodeStore((state) => state.loginEntryRequest);
   const rootModelSelectionRead = useModelSelectionServiceView(services.modelSelectionService);
   const rootModelSelectionView =
     rootModelSelectionRead.state.status === "ready" ? rootModelSelectionRead.state.view : null;
@@ -224,10 +206,6 @@ function RootInner({
         </Button>
       </div>
     ) : null;
-  const readRootModelSelectionView = useCallback(
-    () => services.modelSelectionService.getView(),
-    [services.modelSelectionService],
-  );
   const [remoteConnectionDialogOpen, setRemoteConnectionDialogOpen] = useState(false);
   const [remoteConnectionOpenPreference, setRemoteConnectionOpenPreference] =
     useState<RemoteConnectionOpenPreference | null>(null);
@@ -428,44 +406,19 @@ function RootInner({
     modelSelectionViewHydrated:
       rootProviderAvailability.hydrated || rootModelSelectionRead.state.status === "error",
   });
-  const providerAvailabilityLoginEntryGuardEnabled =
-    shouldEnableProviderAvailabilityLoginEntryGuard();
-  const { startupCheckCompleted: providerAvailabilityStartupCheckCompleted } =
-    useProviderAvailabilityLoginEntryGuard({
-      enabled: providerAvailabilityLoginEntryGuardEnabled,
-      user,
-      isRestoringOAuthSession: isResolvingStartupAuthState || providerStartupSyncPending,
-      providerFamilyDomain: appSettings?.providerFamilyDomain,
-      modelSelectionView: rootModelSelectionView,
-      modelSelectionError:
-        rootModelSelectionRead.state.status === "error"
-          ? rootModelSelectionRead.state.error
-          : undefined,
-      refreshProviderState,
-      readModelSelectionView: readRootModelSelectionView,
-      setLoginEntryOpen: (open) => {
-        setWelcomeScreenOpenReason((currentReason) => {
-          if (open) {
-            return "startup-provider-required";
-          }
-          // JWT 过期提示确认后会先写入 session-expired，随后 provider
-          // 启动门禁以 open=false 收尾。这里若无条件清空，会覆盖重新登录页并回到工作区。
-          // 门禁只能关闭自己拥有的启动登录态，不能清理其它交互来源的 reason。
-          return currentReason === "startup-provider-required" ? null : currentReason;
-        });
-      },
-    });
-  const isResolvingProviderStartupState = shouldResolveProviderStartupState({
-    providerStartupSyncPending,
-    providerAvailabilityStartupCheckCompleted,
-  });
-  const isStartupProviderLoginEntryOpen = welcomeScreenOpenReason === "startup-provider-required";
-  // 首次安装时 provider 登录入口判定晚于 workspace 注入，ChatView 会先 mount 并触发草稿预热。
-  // 这里把 provider 启动检查纳入 workspace 恢复门禁，避免未连接账号前启动 ZCode session。
+  // ── 本地自用分支：已移除「provider 可用性 → 强制登录入口」守卫 ──
+  //
+  // 原 useProviderAvailabilityLoginEntryGuard 会在「未登录且没有可用 provider」时
+  // 强制打开 WelcomeScreen 并阻断 workspace 恢复（配合 RootWorkspaceContent 的登录按钮）。
+  // 登录/授权面板已整体移除，该守卫若保留会让首次启动停在无出口的阻断态，因此删除。
+  // workspace 恢复仍等待 providerFamilyDomain 迁移与 modelSelection 水合完成
+  // （providerStartupSyncPending），保持「provider 状态已知后再启动 session」的时序，
+  // 只是不再据此要求登录。
+  const isResolvingProviderStartupState = providerStartupSyncPending;
+  // 首次安装时 provider 状态判定晚于 workspace 注入，ChatView 会先 mount 并触发草稿预热。
+  // 这里把 provider 启动检查纳入 workspace 恢复门禁，避免 provider 未知时启动 ZCode session。
   const canRestoreWorkspaceSession =
-    !isResolvingStartupAuthState &&
-    !isResolvingProviderStartupState &&
-    !isStartupProviderLoginEntryOpen;
+    !isResolvingStartupAuthState && !isResolvingProviderStartupState;
 
   useEffect(() => {
     // 跨 workspace 任务列表需要一个稳定的“本地/root services”入口。
@@ -483,8 +436,12 @@ function RootInner({
   const handleOpenDirectoryBrowser = useCallback(() => {
     setDirectoryBrowserOpen(true);
   }, []);
+  // ── 登录流程已移除：以下两个回调原用于把用户送回 WelcomeScreen 重新登录 ──
+  // （JWT 失效要求重新认证 / 登出后 providerFamilyDomain 被清空）。现在既没有登录
+  // 面板可去，也没有官方账号体系可失效，回调退化为仅记录日志的 no-op，保留接线
+  // 以维持 useRootOAuthEffects / useRootWorkspaceActions 的接口形状不变。
   const handleReauthenticationRequired = useCallback(() => {
-    setWelcomeScreenOpenReason("session-expired");
+    logger.warn("[Root] 收到重新认证请求，但本地自用分支已移除登录流程，忽略");
   }, []);
   const {
     setWorkspaceActionError,
@@ -494,7 +451,6 @@ function RootInner({
     handleSelectProject,
     handleSelectConversationWorkspace,
     handleResolveConversationWorkspace,
-    handleEnsureConversationWorkspace,
     handleCreateConversationTask,
     handleOpenWorkspace,
     handleOpenFolderFromWorkspaceMenu,
@@ -518,7 +474,9 @@ function RootInner({
     setOAuthError,
     setUser,
     onProviderFamilyDomainClearedAfterLogout: () => {
-      setWelcomeScreenOpenReason("logout-provider-required");
+      // 原实现会置 "logout-provider-required" 把用户送回登录页；登录流程已移除，
+      // 登出后停留在工作区即可（providerFamilyDomain 清空本身由 action 内部完成）。
+      logger.info("[Root] provider family domain 已随登出清空； スポンサーサイト，停留在当前界面");
     },
     userId: user?.id,
     onOpenRemoteConnection: allowRemoteWorkspace ? handleOpenRemoteConnection : undefined,
@@ -608,9 +566,10 @@ function RootInner({
   void clearCredentials;
   // 启动阻塞是桌面窗口保护期，手机 Web 远控在进入 Root 前已有配对/加载页。
   // Web 端继续使用该 gate 会在 workspace tab 注入前渲染空 RootShell，露出浏览器白底。
+  // welcomeScreenOpen 恒为 false：登录 WelcomeScreen 已从本地自用分支移除。
   const isStartupRenderBlocked = shouldShowRootStartupLoading({
     isDesktop,
-    welcomeScreenOpen: Boolean(welcomeScreenOpenReason),
+    welcomeScreenOpen: false,
     isResolvingStartupAuthState,
     isResolvingProviderStartupState,
     isRestoring,
@@ -622,7 +581,7 @@ function RootInner({
     if (
       !shouldReportLaunchToInput({
         isStartupRenderBlocked,
-        welcomeScreenOpen: Boolean(welcomeScreenOpenReason),
+        welcomeScreenOpen: false,
         alreadyReported: launchReportedRef.current,
       })
     ) {
@@ -640,7 +599,7 @@ function RootInner({
       inputReady: Date.now(), // T6
       sessionId: `launch-${timings.marks.createdAt}`,
     });
-  }, [isStartupRenderBlocked, welcomeScreenOpenReason]);
+  }, [isStartupRenderBlocked]);
 
   useRootPlatformEffects({
     initialWorkspaceAbsPath,
@@ -752,9 +711,7 @@ function RootInner({
   );
 
   const canEnterNativeThemeSyncSurface = Boolean(
-    !isStartupRenderBlocked &&
-    !welcomeScreenOpenReason &&
-    (workspaceShellPath || isSettingsTabActive),
+    !isStartupRenderBlocked && (workspaceShellPath || isSettingsTabActive),
   );
 
   useEffect(() => {
@@ -789,7 +746,6 @@ function RootInner({
         isRestoring,
         isBootstrappingInitialWorkspace,
       }) ||
-      isStartupProviderLoginEntryOpen ||
       workspaceShellPath ||
       isSettingsTabActive ||
       !allowOpenWorkspace ||
@@ -841,7 +797,6 @@ function RootInner({
     isResolvingStartupAuthState,
     isRestoring,
     isSettingsTabActive,
-    isStartupProviderLoginEntryOpen,
     services.fileService,
     setWorkspaceActionError,
     tabStoreApi,
@@ -858,49 +813,15 @@ function RootInner({
     );
   }, [isSettingsTabActive, workspaceShellPath]);
 
-  useEffect(() => {
-    if (!loginEntryRequest) {
-      return;
-    }
-    // 登录入口已从模态弹窗收敛为 WelcomeScreen。
-    // provider 连接请求仍要先退出首次启动引导语义，避免连接完成后误创建默认 workspace。
-    setWelcomeScreenOpenReason("provider-request");
-  }, [loginEntryRequest]);
+  // ── 登录流程已整体移除 ──
+  // 原实现有三段：
+  //   1. loginEntryRequest effect —— 设置页点「登录」时打开 WelcomeScreen（reason=provider-request）；
+  //   2. handleOpenLoginEntry —— 侧边栏/底栏登录按钮的 onClick（reason=manual-login）；
+  //   3. handleWelcomeScreenComplete —— 登录成功后刷新设置并按需创建默认 workspace。
+  // WelcomeScreen / LoginApiKeyForm / OAuth 登录入口均已删除，这三段随之移除；
+  // 登录成功后的「刷新 + 创建默认 workspace」路径不再存在，workspace 由启动恢复与
+  // 兜底创建 effect 负责。handleEnsureConversationWorkspace 不再被 Root 使用。
 
-  const handleOpenLoginEntry = () => {
-    setWelcomeScreenOpenReason("manual-login");
-  };
-  const handleWelcomeScreenComplete = useCallback(
-    async (reason: LoginCompleteReason) => {
-      await refreshAppSettings();
-      if (
-        welcomeScreenOpenReason !== "startup-provider-required" ||
-        workspaceShellPath ||
-        !allowOpenWorkspace
-      ) {
-        setWelcomeScreenOpenReason(null);
-        return;
-      }
-
-      try {
-        await handleEnsureConversationWorkspace();
-      } catch (error) {
-        logger.error("[Root] 登录后创建默认 workspace 失败", {
-          error,
-          reason,
-        });
-      } finally {
-        setWelcomeScreenOpenReason(null);
-      }
-    },
-    [
-      allowOpenWorkspace,
-      handleEnsureConversationWorkspace,
-      refreshAppSettings,
-      welcomeScreenOpenReason,
-      workspaceShellPath,
-    ],
-  );
   const handleRemoteConnectionDialogOpenChange = useCallback((open: boolean) => {
     setRemoteConnectionDialogOpen(open);
     if (!open) {
@@ -959,7 +880,7 @@ function RootInner({
     onCreateTask: handleCreateTask,
     onOpenWorkspace: handleOpenWorkspace,
     allowOpenWorkspace,
-    onLogin: !user ? handleOpenLoginEntry : undefined,
+    // 登录流程已移除：不再向设置页注入 onLogin，侧边栏底栏的「登录」入口随之消失。
     onLogout: user ? handleLogout : undefined,
     user,
   };
@@ -979,16 +900,8 @@ function RootInner({
     );
   }
 
-  if (welcomeScreenOpenReason) {
-    return (
-      <RootShell>
-        {rootModelSelectionErrorNode}
-        {remoteConnectionDialog}
-        {directoryBrowserDialog}
-        <WelcomeScreen onComplete={handleWelcomeScreenComplete} />
-      </RootShell>
-    );
-  }
+  // 登录 WelcomeScreen 已整体移除：启动不再有任何「先登录再进工作区」的分支，
+  // provider 启动检查完成后直接进入主界面（或 workspace 注入兜底）。
 
   if (
     !workspaceShellPath &&
@@ -1012,78 +925,78 @@ function RootInner({
       {rootModelSelectionErrorNode}
       {remoteConnectionDialog}
       {directoryBrowserDialog}
-      <OccupationOnboarding
-        showWindowControls={Boolean(isWindowsDesktop || (isDesktop && !isMacDesktop))}
-        showChildrenWhileLoading={!workspaceShellPath && isSettingsTabActive}
-        isMacDesktop={isMacDesktop}
-        isWindowsDesktop={isWindowsDesktop}
+      {/* ── OccupationOnboarding（职业/兴趣引导）已从本地自用分支移除 ──
+          原 OccupationOnboarding 是包裹主内容的包装器：触发时全屏展示职业/模式/偏好
+          三步问卷并写入 onboardingOccupation 与引导记录，未触发时直接透传 children。
+          解包后内容树原样提升；引导全屏态的自绘窗控（DesktopWindowControls）只存在于
+          问卷视图内部，正常主界面窗控由标题栏负责，不受影响。
+          原 showChildrenWhileLoading 用于等待 settings RPC 期间防黑屏，解包后内容
+          始终渲染，该问题自然消除。OnboardingDialog（会话/技能/MCP 导入向导）保留。 */}
+      {/* 无项目时设置页与向导仍要挂载，才能响应设置页的手动打开请求。 */}
+      {!workspaceShellPath ? (
+        isSettingsTabActive ? (
+          <ScopedErrorBoundary
+            scope="settings-page"
+            resetKeys={["settings-root"]}
+            variant="panel"
+            className="h-full"
+          >
+            <SettingsPage {...settingsLayerProps} />
+          </ScopedErrorBoundary>
+        ) : null
+      ) : (
+        <RootWorkspaceContent
+          workspaceScopedServices={workspaceScopedServices}
+          baseFeedbackService={services.feedbackService}
+          workspaceShellPath={workspaceShellPath}
+          workspaceIdentity={workspaceShellIdentity}
+          workspaceRemoteSessionId={workspaceShellRemoteSessionId}
+          activeWorkspacePath={activeWorkspacePath}
+          isSettingsTabActive={isSettingsTabActive}
+          handleConnectRemote={handleConnectRemote}
+          handleSelectRemoteProject={handleSelectRemoteProject}
+          handleCancelRemoteProject={handleCancelRemoteProject}
+          handleReconnectRemoteWorkspace={handleReconnectRemoteWorkspace}
+          handleCreateTask={handleCreateTask}
+          handleCreateConversationTask={handleCreateConversationTask}
+          handleResolveConversationWorkspace={handleResolveConversationWorkspace}
+          handleOpenWorkspace={handleOpenWorkspace}
+          handleOpenFolderFromWorkspaceMenu={handleOpenFolderFromWorkspaceMenu}
+          handleOpenRemoteWorkspace={
+            allowRemoteWorkspace ? handleOpenRemoteConnection : undefined
+          }
+          handleCreateScratchWorkspace={handleCreateScratchWorkspace}
+          remoteConnectionInProgress={remoteConnectionInProgress}
+          remoteWorkspaceSessions={remoteWorkspaceSessions}
+          allowRemoteWorkspace={allowRemoteWorkspace}
+          handleBackFromSettings={handleBackFromSettings}
+          handleLogout={user ? handleLogout : undefined}
+          // 登录流程已移除：不再注入 onLogin，工作区侧边栏的「登录」菜单项随之消失。
+          user={user}
+          reconnectingRemoteWorkspaceKeys={reconnectingRemoteWorkspaceKeys}
+          remoteWorkspaceErrorByWorkspaceKey={remoteWorkspaceErrorByWorkspaceKey}
+          reconnectingRemoteWorkspaceLogsByWorkspaceKey={
+            reconnectingRemoteWorkspaceLogsByWorkspaceKey
+          }
+          remoteConnectionLogs={remoteConnectionLogs}
+          allowOpenWorkspace={allowOpenWorkspace}
+          isDesktop={isDesktop}
+          isMacDesktop={isMacDesktop}
+          isWindowsDesktop={isWindowsDesktop}
+          supportsEmbeddedBrowser={supportsEmbeddedBrowser}
+        />
+      )}
+      <ScopedErrorBoundary
+        scope="onboarding-dialog"
+        resetKeys={[workspaceShellIdentity?.trim() || workspaceShellPath]}
+        variant="silent"
       >
-        {/* 新引导属于应用级偏好；无项目时也要挂载，才能响应设置页的手动打开请求。 */}
-        {!workspaceShellPath ? (
-          isSettingsTabActive ? (
-            <ScopedErrorBoundary
-              scope="settings-page"
-              resetKeys={["settings-root"]}
-              variant="panel"
-              className="h-full"
-            >
-              <SettingsPage {...settingsLayerProps} />
-            </ScopedErrorBoundary>
-          ) : null
-        ) : (
-          <RootWorkspaceContent
-            workspaceScopedServices={workspaceScopedServices}
-            baseFeedbackService={services.feedbackService}
-            workspaceShellPath={workspaceShellPath}
-            workspaceIdentity={workspaceShellIdentity}
-            workspaceRemoteSessionId={workspaceShellRemoteSessionId}
-            activeWorkspacePath={activeWorkspacePath}
-            isSettingsTabActive={isSettingsTabActive}
-            handleConnectRemote={handleConnectRemote}
-            handleSelectRemoteProject={handleSelectRemoteProject}
-            handleCancelRemoteProject={handleCancelRemoteProject}
-            handleReconnectRemoteWorkspace={handleReconnectRemoteWorkspace}
-            handleCreateTask={handleCreateTask}
-            handleCreateConversationTask={handleCreateConversationTask}
-            handleResolveConversationWorkspace={handleResolveConversationWorkspace}
-            handleOpenWorkspace={handleOpenWorkspace}
-            handleOpenFolderFromWorkspaceMenu={handleOpenFolderFromWorkspaceMenu}
-            handleOpenRemoteWorkspace={
-              allowRemoteWorkspace ? handleOpenRemoteConnection : undefined
-            }
-            handleCreateScratchWorkspace={handleCreateScratchWorkspace}
-            remoteConnectionInProgress={remoteConnectionInProgress}
-            remoteWorkspaceSessions={remoteWorkspaceSessions}
-            allowRemoteWorkspace={allowRemoteWorkspace}
-            handleBackFromSettings={handleBackFromSettings}
-            handleLogout={user ? handleLogout : undefined}
-            onLogin={!user ? handleOpenLoginEntry : undefined}
-            user={user}
-            reconnectingRemoteWorkspaceKeys={reconnectingRemoteWorkspaceKeys}
-            remoteWorkspaceErrorByWorkspaceKey={remoteWorkspaceErrorByWorkspaceKey}
-            reconnectingRemoteWorkspaceLogsByWorkspaceKey={
-              reconnectingRemoteWorkspaceLogsByWorkspaceKey
-            }
-            remoteConnectionLogs={remoteConnectionLogs}
-            allowOpenWorkspace={allowOpenWorkspace}
-            isDesktop={isDesktop}
-            isMacDesktop={isMacDesktop}
-            isWindowsDesktop={isWindowsDesktop}
-            supportsEmbeddedBrowser={supportsEmbeddedBrowser}
-          />
-        )}
-        <ScopedErrorBoundary
-          scope="onboarding-dialog"
-          resetKeys={[workspaceShellIdentity?.trim() || workspaceShellPath]}
-          variant="silent"
-        >
-          <OnboardingDialog
-            workspacePath={workspaceShellPath || undefined}
-            workspaceIdentity={workspaceShellIdentity}
-            isDesktop={isDesktop}
-          />
-        </ScopedErrorBoundary>
-      </OccupationOnboarding>
+        <OnboardingDialog
+          workspacePath={workspaceShellPath || undefined}
+          workspaceIdentity={workspaceShellIdentity}
+          isDesktop={isDesktop}
+        />
+      </ScopedErrorBoundary>
     </RootShell>
   );
 }

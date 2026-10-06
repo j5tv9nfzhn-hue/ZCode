@@ -589,8 +589,9 @@ export function SettingsPage({
         : "app",
     );
   }, [selectedUsageCodingPlanSource, usageActiveTab, usageCodingPlanSources]);
-  const setNewUserOnboardingOpen = useZCodeStore((state) => state.setNewUserOnboardingOpen);
-  const requestOnboardingDialog = () => setNewUserOnboardingOpen(true);
+  // 原实现经 setNewUserOnboardingOpen 打开 OccupationOnboarding 职业问卷（已移除）。
+  // 现在「重新打开引导」直接打开 OnboardingDialog 导入向导（会话/技能/MCP 迁移）。
+  const requestOnboardingDialog = useZCodeStore((state) => state.requestOnboardingDialog);
   const setActiveSettingsSection = useCallback(
     (section: SettingsSectionId, fallbackSection: SettingsSectionId = activeSection) => {
       const resolvedSection = resolveSettingsSection(section, fallbackSection);

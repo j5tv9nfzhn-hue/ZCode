@@ -50,6 +50,21 @@ function isInteractiveModelDragTarget(target: EventTarget | null): boolean {
   );
 }
 
+/**
+ * 设置页模型列表的长列表优化（本地自用分支性能修复）。
+ *
+ * 该列表由 `modelIds.map()` 全量渲染，每行还挂着 dnd-kit 的 `useSortable`
+ * （`role=button` + 指针/键盘 listeners）。供应商模型多时，滚动要对全部屏外行
+ * 反复做布局与绘制。`content-visibility: auto` 跳过屏外行的布局/绘制；
+ * `contain-intrinsic-size: auto 3.5rem` 表示「优先用上次实测高度，未渲染过按 3.5rem 估算」，
+ * 行结构统一，估算与实际接近，滚动条不会跳。
+ *
+ * 与 dnd-kit 的关系：dnd-kit 默认只在拖动期间测量 droppable，且 `auto` 会在行渲染后
+ * 记住真实高度，所以拖动时可见行与已渲染行的测量仍然准确，排序行为不变。
+ */
+const MODEL_ROW_OFFSCREEN_CLASS_NAME =
+  "[content-visibility:auto] [contain-intrinsic-size:auto_3.5rem]";
+
 function resolveSortableProviderModelRowClassName({
   isDragging,
   isLast,
@@ -64,7 +79,7 @@ function resolveSortableProviderModelRowClassName({
     : isLast
       ? "border-b-0"
       : "border-b border-input-border";
-  return `min-w-0 cursor-grab touch-pan-y select-none active:cursor-grabbing ${dividerClassName} ${isDragging ? "relative z-10 bg-card shadow-md" : ""}`;
+  return `min-w-0 cursor-grab touch-pan-y select-none active:cursor-grabbing ${MODEL_ROW_OFFSCREEN_CLASS_NAME} ${dividerClassName} ${isDragging ? "relative z-10 bg-card shadow-md" : ""}`;
 }
 
 function SortableProviderModelRow({
@@ -131,7 +146,10 @@ export function SortableProviderModelList({
         {row}
       </SortableProviderModelRow>
     ) : (
-      <div key={modelId} className={isLast ? "border-b-0" : "border-b border-input-border"}>
+      <div
+        key={modelId}
+        className={`${isLast ? "border-b-0" : "border-b border-input-border"} ${MODEL_ROW_OFFSCREEN_CLASS_NAME}`}
+      >
         {row}
       </div>
     );

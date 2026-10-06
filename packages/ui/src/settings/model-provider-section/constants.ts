@@ -1,12 +1,9 @@
 import {
-  BIGMODEL_PROVIDER_ID,
   buildBigModelApiUrl,
-  buildBigModelCodingPlanPersonalManageUrl,
   BUILTIN_MODEL_PROVIDER_IDS,
   createUuid,
   type OAuthProviderId,
   ZCODE_ENV,
-  ZAI_PROVIDER_ID,
   type BuiltinModelProviderId,
   type UsageQuotaLimit,
   type UsageEntitlementSubscriptionDetail,
@@ -20,10 +17,9 @@ export function generateId(): string {
 }
 
 export const PRESET_SUBSCRIPTION_TIMEOUT_MS = 2 * 60 * 1000;
+// 仍导出但触发链已随预设清空：ModelProviderSection 的跳转回调只有在 BigModel OAuth
+// checking 失败提示下才会被调用，预设移除后该提示不再可能出现。
 export const BIGMODEL_REGISTRATION_URL = buildBigModelApiUrl({ ZCODE_ENV }, "/login");
-const BIGMODEL_CODING_PLAN_PERSONAL_MANAGE_URL = buildBigModelCodingPlanPersonalManageUrl({
-  ZCODE_ENV,
-});
 
 export interface PresetProviderSpec {
   id: BuiltinModelProviderId;
@@ -31,18 +27,18 @@ export interface PresetProviderSpec {
   oauthProviderId?: OAuthProviderId;
 }
 
-export const PRESET_PROVIDER_SPECS: PresetProviderSpec[] = [
-  {
-    id: BUILTIN_MODEL_PROVIDER_IDS.zaiStartPlan,
-    displayName: "Z.ai",
-    oauthProviderId: ZAI_PROVIDER_ID,
-  },
-  {
-    id: BUILTIN_MODEL_PROVIDER_IDS.bigmodelStartPlan,
-    displayName: "BigModel",
-    oauthProviderId: BIGMODEL_PROVIDER_ID,
-  },
-];
+// ── 本地自用分支：已移除 Z.ai / BigModel（智谱国内站点）预设 ──
+//
+// 这两个预设是整个 Coding Plan / OAuth / 订阅额度体系的入口。把它们清空后：
+// - 设置页「模型供应商」不再出现 Z.ai / BigModel 品牌入口与 Coding Plan 卡片；
+// - 相关 OAuth、套餐额度查询因为遍历源为空而自然不再触发；
+// - 用户仍然可以正常「添加自定义 Provider」并手填 API Key。
+//
+// 这里刻意保留数组常量与其类型/消费方，而不是连根删除整个模块：
+// 消费方只有 2 处且都是 `.filter()` 遍历（ModelProviderSection.tsx:610、
+// useModelProviderNavigation.ts:94），清空数据即可让 UI 与请求全部消失，改动面
+// 最小且不引入未定义引用。相关类型（CodingPlanProviderId 等）仍被额度面板引用。
+export const PRESET_PROVIDER_SPECS: PresetProviderSpec[] = [];
 
 export const PRESET_PROVIDER_SPEC_BY_ID = new Map<BuiltinModelProviderId, PresetProviderSpec>(
   PRESET_PROVIDER_SPECS.map((item) => [item.id, item]),
@@ -74,36 +70,9 @@ interface CodingPlanProviderSpec {
   purchaseUrl?: string;
 }
 
-export const CODING_PLAN_PROVIDER_SPECS: CodingPlanProviderSpec[] = [
-  {
-    id: BUILTIN_MODEL_PROVIDER_IDS.zaiStartPlan,
-    oauthProviderId: ZAI_PROVIDER_ID,
-    label: "Z.ai - Coding Plan",
-    providerName: "Z.ai",
-    purchaseUrl: "https://z.ai/manage-apikey/subscription",
-  },
-  {
-    id: BUILTIN_MODEL_PROVIDER_IDS.zaiIndividualCodingPlan,
-    oauthProviderId: ZAI_PROVIDER_ID,
-    label: "Z.ai - Coding Plan",
-    providerName: "Z.ai",
-    purchaseUrl: "https://z.ai/manage-apikey/subscription",
-  },
-  {
-    id: BUILTIN_MODEL_PROVIDER_IDS.bigmodelIndividualCodingPlan,
-    oauthProviderId: BIGMODEL_PROVIDER_ID,
-    label: "BigModel - Coding Plan",
-    providerName: "BigModel",
-    purchaseUrl: BIGMODEL_CODING_PLAN_PERSONAL_MANAGE_URL,
-  },
-  {
-    id: BUILTIN_MODEL_PROVIDER_IDS.bigmodelStartPlan,
-    oauthProviderId: BIGMODEL_PROVIDER_ID,
-    label: "BigModel- Coding Plan",
-    providerName: "BigModel",
-    purchaseUrl: BIGMODEL_CODING_PLAN_PERSONAL_MANAGE_URL,
-  },
-];
+// 同 PRESET_PROVIDER_SPECS：置空 Coding Plan 导航数据源，Z.ai / BigModel 套餐卡片
+// （含购买链接、额度查询、团队版状态）随遍历源为空而整体消失。
+export const CODING_PLAN_PROVIDER_SPECS: CodingPlanProviderSpec[] = [];
 
 export interface CodingPlanEntitlementState {
   snapshot: UsageEntitlementSnapshot | null;

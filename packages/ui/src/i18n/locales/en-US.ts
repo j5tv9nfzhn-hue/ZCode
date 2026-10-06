@@ -3384,6 +3384,8 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.fetchModels.count": "Endpoint returned {count} model(s)",
   "settings.modelProvider.fetchModels.empty": "The endpoint returned no models.",
   "settings.modelProvider.fetchModels.alreadyConfigured": "Configured",
+  "settings.modelProvider.fetchModels.selectAll": "Select all",
+  "settings.modelProvider.fetchModels.selectNone": "Select none",
   "settings.modelProvider.fetchModels.import": "Add {count} selected model(s)",
   "settings.modelProvider.modelId": "Model ID",
   "settings.modelProvider.modelDisplayName": "Display name",

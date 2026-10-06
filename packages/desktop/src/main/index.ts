@@ -132,7 +132,7 @@ import { applyAppIcon } from "./desktopWindowChrome.js";
 import { resolveWindowsAppUserModelIdForFlavor } from "../../scripts/desktop-product-identity.mjs";
 import type { DesktopWindowSize } from "./desktopWindowSize.js";
 import { maybeWarnArchitectureMismatch } from "./desktopArchitectureGuard.js";
-import { maybeBlockStartupForForceUpdate } from "./forceUpdateGuard.js";
+// forceUpdateGuard 已停用：本地自用分支禁用远端强制升级（见 startup 流程中的说明）。
 import { createWindowsDesktopTray, updateWindowsDesktopTrayMenu } from "./desktopTray.js";
 import { createWindowsCuaOperationIndicator } from "./windowsCuaOperationIndicator.js";
 import {
@@ -857,8 +857,11 @@ let startupOpenWorkspaceRequest: ExplicitStartupWorkspaceRequest | null =
       ? { path: startupDeepLinkWorkspacePath, source: "deep-link" }
       : null;
 
+// 本地自用分支禁用强制升级后此值恒为 false，但仍被 canCreateWindow 与状态上报读取。
+// 刻意用 `let` 而不是 `const`：const 会让 TS 把它收窄成字面量 `false`，进而把下游的
+// `if (!forceUpdateMainWindowCreationBlocked)` 判定为常量条件而触发 lint 报错；
+// 保留 `let` 维持 boolean 类型，语义等价且不引入新的 lint 违规。
 let forceUpdateMainWindowCreationBlocked = false;
-
 function resolveExternalWorkspaceConfirmationCopy() {
   const effectiveLocale =
     currentApplicationLocale === DEFAULT_LOCALE && app.isReady()
@@ -2012,8 +2015,19 @@ app.whenReady().then(async () => {
   // 启动自动更新检查（后台执行，不阻塞主界面）
   // Preview 身份无论连接哪个后端都不自动更新：stable feed 上只分发正式 ZCode 安装包，
   // 不向 Preview 渠道提供更新。
+  //
+  // ⚠️ 本地自用分支：**已禁用自动更新**。
+  //
+  // 原实现为 `enabled: ZCODE_PRODUCT_FLAVOR === "production"`，即正式身份下会启动
+  // 每小时一次的轮询（autoUpdater.ts 的 AUTO_UPDATE_POLL_INTERVAL_MS = 60min），
+  // 持续向官方 update feed 发请求并携带 deviceMid、平台、架构、版本、releaseChannel。
+  // 本分支自用、不从官方渠道取包，没有理由维持这条周期性出网。
+  //
+  // 禁用后：不轮询、不下载、不安装；菜单里的「检查更新」由
+  // autoUpdaterDisabledForProductFlavor 在模块内部 fail-closed（见 autoUpdater.ts:59-62），
+  // 不会对占位 feed 发真实请求。升级改由重新构建安装包完成。
   void initAutoUpdater({
-    enabled: ZCODE_PRODUCT_FLAVOR === "production",
+    enabled: false,
     onBeforeQuitAndInstall: async () => {
       notifyStabilityLifecycle("update_install");
       await prepareAppQuit("auto-update quitAndInstall", "update-install");
@@ -2248,32 +2262,16 @@ app.whenReady().then(async () => {
   });
   registerDesktopNetworkTelemetry(logger);
 
-  // 本地未打包 dev 构建（app.isPackaged === false）必须跳过远端强制升级 gate。
-  // 原因：force-update gate 只看 ZCODE_ENV === "production"，但 dev 构建（如 dev:desktop:cua
-  // 连真实后端测 computer use）虽指向 production 后端，版本号却滞后于线上 release（feature
-  // 分支不 bump 版本），会被 release minimalVersion 误判为"需强制升级"而启动秒退。force-update
-  // 是面向打包发布客户端的安全门，对未打包 dev 运行时无意义。打包版 app.isPackaged === true，
-  // gate 照常生效，对真实用户零影响。
-  const skipForceUpdateForLocalDevRuntime = !app.isPackaged;
-  const forceUpdateGuardResult =
-    ZCODE_PRODUCT_FLAVOR === "production" && !skipForceUpdateForLocalDevRuntime
-      ? await maybeBlockStartupForForceUpdate({
-          locale: currentApplicationLocale,
-          logger,
-          endpointOrigin: await resolveCurrentZCodeEndpointOrigin(),
-          onBlocked: () => {
-            forceUpdateMainWindowCreationBlocked = true;
-          },
-        })
-      : { blocked: false };
-  if (ZCODE_PRODUCT_FLAVOR !== "production") {
-    logger.info("[force-update] Preview 跳过远端强制升级检查");
-  } else if (skipForceUpdateForLocalDevRuntime) {
-    logger.info("[force-update] 本地 dev 构建（未打包）跳过远端强制升级检查");
-  }
-  if (forceUpdateGuardResult.blocked) {
-    return;
-  }
+  // ⚠️ 本地自用分支：**已整体禁用强制升级 gate**。
+  //
+  // 原判定为 `ZCODE_PRODUCT_FLAVOR === "production" && app.isPackaged`，对正式打包版生效：
+  // 启动时连官方端点拉 minimalVersion，不达标则 blocked=true 并直接 return（主窗口不创建）。
+  // 对自用构建这是两个不可接受的风险：
+  //   1. 每次启动都向官方端点发请求并携带版本与 deviceMid；
+  //   2. 官方一旦上调 minimalVersion，自己构建的包会**无法启动**——自用产物的可用性
+  //      不应由远端策略决定。
+  // 升级改由重新构建安装包完成，与本分支的定位一致。
+  logger.info("[force-update] 本地自用分支已禁用远端强制升级检查");
 
   logger.info("[startup] 创建主窗口");
   await primaryWindowCoordinator.ensurePrimaryWindow("app-ready");

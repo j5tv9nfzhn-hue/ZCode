@@ -149,7 +149,24 @@ function buildDesktopWindowVisualOptions() {
       backgroundColor: "#00000000",
       // Windows 窗口操作由 renderer 绘制，禁用原生标题栏，避免出现两套按钮。
       frame: false,
-      backgroundMaterial: "acrylic" as const,
+      // ── 本地自用分支：已移除 backgroundMaterial: "acrylic"（性能修复）──
+      //
+      // 为什么移除：renderer 根节点 DesktopWindowFrame 在 Windows 上绘制**不透明**底
+      // （usesOpaqueRootSurface → bg-background-win-alt = #ececee / #2b2b2b，见
+      // DesktopWindowFrame.tsx:28,43）。acrylic 模糊层被这层不透明内容完全遮挡、
+      // 用户根本看不见，但 DWM 仍要为窗口维持系统模糊合成表面。
+      //
+      // 代价：在没有硬件模糊能力的集成显卡上（如 i3-3110M / Intel HD 4000），DWM 走
+      // 软件模糊路径，窗口内**任何**区域重绘（列表滚动、展开/收起、切 tab、动画）都会
+      // 触发整窗模糊底重新合成。这正好对应实测到的「大量不相关区域同时卡顿」。
+      // 本文件 :258 的 show 后强制重绘，也是在绕 acrylic 合成 surface 失效的老问题。
+      //
+      // 移除后：可见像素 100% 来自 renderer，视觉零变化；主窗口 show:false → 等
+      // ready-to-show 才显示，因此不会出现首帧露底。backgroundColor 透明底保留，
+      // 以维持 frameless 窗口在 Win11 上的系统圆角裁切。
+      //
+      // 若将来要恢复毛玻璃外观，请同时让 renderer 根节点改为半透明，否则只是白白付出
+      // 每帧模糊合成的代价。
     };
   }
 

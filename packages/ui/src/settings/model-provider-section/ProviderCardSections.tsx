@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- 模型供应商卡片仍在迁移期集中维护多个紧耦合区块，后续拆分时再移除。 */
 import {
+  memo,
   useCallback,
   useMemo,
   useRef,
@@ -33,6 +34,7 @@ import {
   MoreHorizontal,
   Download,
 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import {
@@ -361,6 +363,52 @@ function createEmptyModel(): ProviderSettingsFormModel {
   };
 }
 
+/**
+ * 发现结果里的一行。
+ *
+ * 单独抽成 memo 组件的原因：`discoveredModelIds` 在 OpenRouter 这类 provider 上
+ * 可能有数百条，而勾选任意一行都会更新 `selectedDiscoveredIds`。若把行内联在
+ * `map()` 里，每次勾选都会让**全部行**重渲染（连同每行的 Radix Checkbox 与
+ * `intl.formatMessage` 调用），在几百行时表现为明显的点击延迟。
+ *
+ * memo 之后只有 `checked` 真正变化的那一行会重渲染。为此：
+ * - `onToggle` 由父级 useCallback 稳定（依赖为空，通过 modelId 参数区分行）；
+ * - `alreadyConfiguredLabel` 由父级算一次传入，避免每行各自 formatMessage。
+ */
+const DiscoveredModelRow = memo(function DiscoveredModelRow({
+  modelId,
+  checked,
+  alreadyConfigured,
+  alreadyConfiguredLabel,
+  onToggle,
+}: {
+  modelId: string;
+  checked: boolean;
+  alreadyConfigured: boolean;
+  alreadyConfiguredLabel: string;
+  onToggle: (modelId: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(modelId)}
+      className="flex h-full w-full items-center gap-2 px-3 py-2 text-left text-ui-base hover:bg-hover"
+    >
+      {/* 勾选框只作视觉指示：整行是唯一的点击目标，避免 label 转发造成双次切换。 */}
+      <Checkbox checked={checked} tabIndex={-1} className="pointer-events-none" />
+      <span className="min-w-0 flex-1 truncate font-mono">{modelId}</span>
+      {alreadyConfigured ? (
+        <span className="shrink-0 text-ui-xs text-foreground-subtlest">
+          {alreadyConfiguredLabel}
+        </span>
+      ) : null}
+    </button>
+  );
+});
+
+/** 发现结果行高（px）。虚拟化需要固定行高：`py-2` × 2 + 单行文字 ≈ 36。 */
+const DISCOVERED_MODEL_ROW_HEIGHT_PX = 36;
+
 export function ProviderModelsSection({
   providerId,
   providerName,
@@ -497,6 +545,26 @@ export function ProviderModelsSection({
 
   const existingModelIds = useMemo(() => new Set(models.map((model) => model.modelId)), [models]);
 
+  // 文案在父级算一次：行组件被 memo，若每行各自调 formatMessage，
+  // 数百行就是数百次 Intl 查找，且会让 memo 的 props 每次都是新字符串而失效。
+  const alreadyConfiguredLabel = intl.formatMessage({
+    id: "settings.modelProvider.fetchModels.alreadyConfigured",
+  });
+
+  // 发现结果列表虚拟化。
+  //
+  // 为什么必须虚拟化而不只是 memo：memo 解决的是「勾选时不要全量重渲染」，但对话框
+  // 首次打开仍要挂载全部行。OpenRouter 这类 provider 一次能返回数百个模型，每个行都含
+  // 一个 Radix Checkbox（自带 context 与 effect），全量挂载会造成对话框打开时的明显卡顿。
+  // 虚拟化后只渲染可见的十余行，几百条与十几条的打开开销一致。
+  const discoveredListRef = useRef<HTMLDivElement | null>(null);
+  const discoveredVirtualizer = useVirtualizer({
+    count: discoveredModelIds.length,
+    getScrollElement: () => discoveredListRef.current,
+    estimateSize: () => DISCOVERED_MODEL_ROW_HEIGHT_PX,
+    overscan: 8,
+  });
+
   const handleDiscoverModels = useCallback(async () => {
     if (discovering) return;
     setDiscovering(true);
@@ -534,6 +602,19 @@ export function ProviderModelsSection({
       return next;
     });
   }, []);
+
+  // 全选：选中全部发现结果（含本地已配置的——用户可能就是想重置它们的元数据）。
+  // 与拉取时的默认行为区分开：默认只勾未配置的，全选是用户的显式动作。
+  const selectAllDiscovered = useCallback(() => {
+    setSelectedDiscoveredIds(new Set(discoveredModelIds));
+  }, [discoveredModelIds]);
+
+  const clearDiscoveredSelection = useCallback(() => {
+    setSelectedDiscoveredIds(new Set());
+  }, []);
+
+  const allDiscoveredSelected =
+    discoveredModelIds.length > 0 && selectedDiscoveredIds.size === discoveredModelIds.length;
 
   const handleImportDiscoveredModels = useCallback(async () => {
     if (importingModels) return;
@@ -607,39 +688,76 @@ export function ProviderModelsSection({
             </p>
           ) : (
             <>
-              <p className="text-ui-sm text-foreground-subtle">
-                {intl.formatMessage(
-                  { id: "settings.modelProvider.fetchModels.count" },
-                  { count: discoveredModelIds.length },
-                )}
-              </p>
-              <div className="max-h-72 overflow-y-auto rounded-lg border border-input-border bg-input">
-                {discoveredModelIds.map((modelId) => {
-                  const alreadyConfigured = existingModelIds.has(modelId);
-                  return (
-                    <button
-                      type="button"
-                      key={modelId}
-                      onClick={() => toggleDiscoveredId(modelId)}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui-base hover:bg-hover"
-                    >
-                      {/* 勾选框只作视觉指示：整行是唯一的点击目标，避免 label 转发造成双次切换。 */}
-                      <Checkbox
-                        checked={selectedDiscoveredIds.has(modelId)}
-                        tabIndex={-1}
-                        className="pointer-events-none"
-                      />
-                      <span className="min-w-0 flex-1 truncate font-mono">{modelId}</span>
-                      {alreadyConfigured ? (
-                        <span className="shrink-0 text-ui-xs text-foreground-subtlest">
-                          {intl.formatMessage({
-                            id: "settings.modelProvider.fetchModels.alreadyConfigured",
-                          })}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-ui-sm text-foreground-subtle">
+                  {intl.formatMessage(
+                    { id: "settings.modelProvider.fetchModels.count" },
+                    { count: discoveredModelIds.length },
+                  )}
+                </p>
+                {/* 全选 / 全不选：几百条结果时逐个点不现实。
+                    全选包含本地已配置项（用户可能想统一重置元数据），与拉取时的
+                    「默认只勾未配置项」是两个不同意图，所以分开呈现而不是合并成一个开关。 */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="default"
+                    className="h-7 rounded-md px-2 text-ui-sm"
+                    disabled={allDiscoveredSelected}
+                    onClick={selectAllDiscovered}
+                  >
+                    {intl.formatMessage({ id: "settings.modelProvider.fetchModels.selectAll" })}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="default"
+                    className="h-7 rounded-md px-2 text-ui-sm"
+                    disabled={selectedDiscoveredIds.size === 0}
+                    onClick={clearDiscoveredSelection}
+                  >
+                    {intl.formatMessage({ id: "settings.modelProvider.fetchModels.selectNone" })}
+                  </Button>
+                </div>
+              </div>
+              <div
+                ref={discoveredListRef}
+                className="max-h-72 overflow-y-auto rounded-lg border border-input-border bg-input"
+              >
+                <div
+                  style={{
+                    height: `${discoveredVirtualizer.getTotalSize()}px`,
+                    width: "100%",
+                    position: "relative",
+                  }}
+                >
+                  {discoveredVirtualizer.getVirtualItems().map((virtualItem) => {
+                    const modelId = discoveredModelIds[virtualItem.index];
+                    if (modelId === undefined) return null;
+                    return (
+                      <div
+                        key={virtualItem.key}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: `${virtualItem.size}px`,
+                          transform: `translateY(${virtualItem.start}px)`,
+                        }}
+                      >
+                        <DiscoveredModelRow
+                          modelId={modelId}
+                          checked={selectedDiscoveredIds.has(modelId)}
+                          alreadyConfigured={existingModelIds.has(modelId)}
+                          alreadyConfiguredLabel={alreadyConfiguredLabel}
+                          onToggle={toggleDiscoveredId}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </>
           )}

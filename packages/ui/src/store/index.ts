@@ -214,9 +214,9 @@ export interface ZCodeState {
     reservation: CodingPlanQuotaResetAutoPlayReservation,
   ) => Promise<void>;
 
-  /** 手动请求打开 onboarding 弹窗 */
-  newUserOnboardingOpen: boolean;
-  setNewUserOnboardingOpen: (open: boolean) => void;
+  // newUserOnboardingOpen / setNewUserOnboardingOpen 已移除：
+  // 它只服务于 OccupationOnboarding 职业问卷（本地自用分支已删除该引导），
+  // 导入向导走下方 onboardingDialogRequested，不使用这两个字段。
   onboardingDialogRequested: boolean | "migration";
   requestOnboardingDialog: (entry?: "migration") => void;
   clearOnboardingDialogRequest: () => void;
@@ -406,8 +406,6 @@ export function createZCodeStore(
       writeState: (updater) => set((state) => updater(state)),
     }),
 
-    newUserOnboardingOpen: false,
-    setNewUserOnboardingOpen: (open) => set({ newUserOnboardingOpen: open }),
     onboardingDialogRequested: false,
     requestOnboardingDialog: (entry) => set({ onboardingDialogRequested: entry ?? true }),
     clearOnboardingDialogRequest: () => set({ onboardingDialogRequested: false }),

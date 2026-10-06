@@ -45,9 +45,27 @@ export const ZCODE_BUILD_COMMIT_ID_ENV = "ZCODE_BUILD_COMMIT_ID" as const;
 export const RUNTIME_ZCODE_DEBUG =
   typeof process !== "undefined" ? process.env.ZCODE_DEBUG : undefined;
 
-// 恢复原因：写死 false 会让运行时已配置的数仓/ARMS 永远空转。
-// 功能保持可用；实际出网由各出口的运行时端点检查决定，未配置不上报。
-export const ZCODE_TELEMETRY_ENABLED: boolean = true;
+// ── 遥测总开关：本地构建已强制关闭 ──
+//
+// 本仓库基于 ZCode 上游 3.14.3 派生（自用分支版本号见根 package.json，当前 3.14.4），
+// **刻意关闭全部出网遥测**。
+//
+// 背景（2026-09 公开事件，非推测）：官方版本曾被发现在用户登录状态下，把整个工作区
+// （完整源码 + .git 历史 + LFS 缓存 + reflog + 全局配置）打包加密上传至阿里云 OSS，
+// 加密私钥仅存云端、用户无法解密，且默认开启、客户端无关闭入口。官方于 3.14.0 移除
+// 该链路并开源，但本文件历史上出现过「把开关改成 false 后又恢复成 true」的痕迹
+// （见下方 git 历史），说明该开关并非稳定承诺。
+//
+// 因此这里不做「未配置端点即停用」这种隐式依赖，而是**直接关闭总开关**：
+// 4 个出网点全部是 `ZCODE_TELEMETRY_ENABLED && <端点非空>` 的短路形式
+// （telemetryCore / appARMSBootstrap / main index 两处），置 false 即全链路断开。
+//
+// 被关闭的具体上报：数仓事件上报（含 device_mid、mac_id、marketing_params、
+// clientTimezone 时区定位、clientLanguage、screenResolution 设备指纹、
+// talk_id/message_id）、ARMS RUM（崩溃、长任务、网络、资源、MCP 遥测）。
+//
+// 要恢复请先评估隐私影响，不要只把这一行改回 true。
+export const ZCODE_TELEMETRY_ENABLED: boolean = false;
 
 /** 数仓事件上报端点：由运行时环境变量提供，未配置即停用，构建产物不内嵌。 */
 export const ZCODE_TELEMETRY_REPORT_ENDPOINT =

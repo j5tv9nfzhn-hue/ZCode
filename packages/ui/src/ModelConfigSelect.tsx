@@ -84,6 +84,23 @@ export interface ModelSelectFooterAction {
 }
 
 const EMPTY_MODEL_SELECT_FOOTER_ACTIONS: readonly ModelSelectFooterAction[] = [];
+
+/**
+ * 模型菜单长列表优化（本地自用分支性能修复）。
+ *
+ * 单 provider 或 `directItems` 组会把**全部**模型内联进菜单，模型多时（如接了
+ * OpenAI 兼容端点一次返回数百个）滚动要反复对屏外行做布局与绘制。
+ * `content-visibility: auto` 让浏览器跳过屏外行的布局/绘制，
+ * `contain-intrinsic-size: auto 2rem`（`min-h-8` = 2rem）表示「优先用上次实测高度，
+ * 未渲染过则按 2rem 估算」，保证滚动条高度稳定。
+ *
+ * 刻意**不做 DOM 虚拟化**：ModelConfigSelect 被聊天工具栏、子代理、自动化、错峰、
+ * 工作流设置等 6+ 处复用，Radix DropdownMenu 的焦点/键盘/typeahead 依赖真实 DOM 节点，
+ * 虚拟化会让键盘无法走到未渲染项。content-visibility 保留完整 DOM 语义，
+ * 只省掉不可见行的绘制成本，是这里风险最低的等价优化。
+ */
+const MODEL_ITEM_OFFSCREEN_CLASS_NAME =
+  "[content-visibility:auto] [contain-intrinsic-size:auto_2rem]";
 export const MODEL_CONFIG_SELECT_BADGE_CLASS_NAME =
   "shrink-0 rounded-full bg-surface px-1 py-px text-ui-xs font-medium leading-normal text-foreground-subtle";
 
@@ -341,7 +358,10 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
           <DropdownMenuItem
             key={itemKey}
             {...commonProps}
-            className="min-h-8 cursor-not-allowed gap-2 px-2 text-ui-base text-foreground-subtlest data-[highlighted]:text-foreground-subtlest"
+            className={cn(
+              "min-h-8 cursor-not-allowed gap-2 px-2 text-ui-base text-foreground-subtlest data-[highlighted]:text-foreground-subtlest",
+              MODEL_ITEM_OFFSCREEN_CLASS_NAME,
+            )}
             onSelect={(event) => event.preventDefault()}
           >
             {content}
@@ -354,7 +374,7 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
           key={itemKey}
           {...commonProps}
           value={item.value}
-          className="min-h-8 gap-2 pl-2 pr-8 text-ui-base"
+          className={cn("min-h-8 gap-2 pl-2 pr-8 text-ui-base", MODEL_ITEM_OFFSCREEN_CLASS_NAME)}
           onSelect={() => {
             handleModelValueChange(item.value);
             handlePopoverOpenChange(false);
@@ -543,7 +563,11 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
         <DropdownMenuContent
           className={cn(
             shouldShowProviderLevel
-              ? "w-max min-w-48 max-w-[calc(100vw-2rem)]"
+              ? // provider 级菜单此前没有高度上限：`directItems` 组（账号/权益 provider）
+                // 会把全部模型内联渲染，模型多时弹层会高到溢出视口且无法滚动。
+                // 这里补上「可用高度与 24rem 取小」的上限并允许滚动；子菜单是 portal 渲染，
+                // 不会被这个 overflow 裁切。
+                "w-max min-w-48 max-w-[calc(100vw-2rem)] max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
               : "w-48 max-h-72 overflow-y-auto",
           )}
           align={contentAlign}

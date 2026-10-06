@@ -3163,6 +3163,8 @@ const zhCN: Record<string, string> = {
   "settings.modelProvider.fetchModels.count": "端点返回 {count} 个模型",
   "settings.modelProvider.fetchModels.empty": "端点没有返回任何模型。",
   "settings.modelProvider.fetchModels.alreadyConfigured": "已配置",
+  "settings.modelProvider.fetchModels.selectAll": "全选",
+  "settings.modelProvider.fetchModels.selectNone": "全不选",
   "settings.modelProvider.fetchModels.import": "添加选中的 {count} 个模型",
   "settings.modelProvider.modelId": "模型 ID",
   "settings.modelProvider.modelDisplayName": "显示名称",
