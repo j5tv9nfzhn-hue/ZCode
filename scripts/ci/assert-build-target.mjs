@@ -83,11 +83,28 @@ const IGNORED_ARTIFACT_NAMES = new Set([
   "latest.yml",
 ]);
 
+/**
+ * 按后缀忽略的伴随文件。
+ *
+ * nsis target 会为安装器产出 `.blockmap`（差分更新用的分块校验）。它既不是可交付文件，
+ * 也不是「其他平台的产物」，所以按后缀忽略而不是判违规 —— 否则每次打包都会在这里红。
+ */
+const IGNORED_ARTIFACT_EXTENSIONS = new Set([".blockmap"]);
+
+/**
+ * 判定失败。
+ *
+ * 同时写 stdout 与 stderr：`process.exit` 紧随其后，pwsh 下 stderr 的内容有时来不及
+ * 被 Actions 收集器取到，日志里只剩一句 "Process completed with exit code 1"，
+ * 完全看不出是哪条约束被违反。写 stdout 保证原因一定进日志。
+ */
 function fail(lines) {
-  console.error("[assert-build-target] 违反 Windows x64 强制约束：");
-  for (const line of lines) {
-    console.error(`  - ${line}`);
-  }
+  const report = [
+    "[assert-build-target] 违反 Windows x64 强制约束：",
+    ...lines.map((line) => `  - ${line}`),
+  ].join("\n");
+  console.log(report);
+  console.error(report);
   process.exit(1);
 }
 
@@ -156,6 +173,10 @@ async function assertArtifactsAreWindowsOnly(distDir) {
 
     const lower = fileName.toLowerCase();
     const extension = extensionOf(lower);
+
+    if (IGNORED_ARTIFACT_EXTENSIONS.has(extension)) {
+      continue;
+    }
 
     if (FORBIDDEN_ARTIFACT_EXTENSIONS.includes(extension)) {
       violations.push(`${fileName}：扩展名 ${extension} 属于其他平台的 target`);
