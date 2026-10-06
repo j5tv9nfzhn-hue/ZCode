@@ -3,7 +3,7 @@
  */
 import type { IChannelServer, IChannelClient, IChannel, IServerChannel } from "./channels.js";
 import type { CancellationToken } from "./foundation.js";
-import type { Event } from "./foundation.js";
+import { Event } from "./foundation.js";
 
 export type NetworkTransportKind = "http" | "websocket" | "rpc";
 

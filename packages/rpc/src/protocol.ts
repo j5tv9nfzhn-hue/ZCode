@@ -9,7 +9,7 @@
  */
 
 import { VSBuffer } from "./buffer.js";
-import { Emitter, DisposableStore, type Event, type IDisposable } from "./foundation.js";
+import { Event, Emitter, IDisposable, DisposableStore } from "./foundation.js";
 
 // ============================================================================
 // 核心传输接口
