@@ -51,6 +51,15 @@ jobs:
       # 2. 后端环境（builtin-provider-config.mjs）：决定连哪套服务端。
       # 该文件对未知值 fail-safe 到 test，所以不设就等于打测试包。
       ZCODE_ENV: production
+      # 跳过远程工作区（SSH/WSL/Docker）资产的跨平台准备，见
+      # packages/desktop/scripts/prepare-runtime-assets.mjs:56 —— Windows 桌面安装包
+      # 不依赖 mock-cdn remote 资产，那段逻辑只服务远程链路。
+      #
+      # 不跳过会直接失败，而不只是变慢：prepare-prebuilds.mjs:53 要为
+      # darwin-arm64 准备 node-pty，而 @lydell/node-pty-darwin-arm64 在
+      # windows-2022 runner 上不存在，报 Cannot find module。
+      # 本仓库只交付桌面端、远程工作区按需另行构建，故在此关闭。
+      ZCODE_SKIP_REMOTE_ASSETS: "1"
       # 不做签名：自用产物。关闭自动发现证书，避免 runner 镜像上任何证书被意外使用。
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       # turbo 在 CI 上需要关闭遥测与交互输出，否则日志会被污染。
