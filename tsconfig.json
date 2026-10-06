@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.base.json",
+  // 仓库根的 tsconfig 只服务于「工具链需要找到一个根 tsconfig」的场景，不参与
+  // 任何 `tsc -b` 构建——typecheck 命令显式列出了各个包。
+  //
+  // 为什么需要它：`tsx` 解析 tsconfig 的 paths 时，是从**被加载文件所在目录**向上
+  // 查找最近的 `tsconfig.json`。单测位于 `packages/<pkg>/test/`，而各包自己的
+  // `tsconfig.json` 的 `include` 只覆盖 `src/**`，tsx 据此判定该配置与测试文件
+  // 无关而继续向上，最终在仓库根找不到任何 tsconfig，paths 完全没被加载，
+  // `packages/ui` 源码里的 `@/lib/...` 在单测中报 ERR_MODULE_NOT_FOUND。
+  //
+  // `@/` 是全仓唯一的路径别名（只有 packages/ui 声明），其权威定义仍在
+  // packages/ui/tsconfig.json；这里按仓库根的 baseUrl 重新定位一份，
+  // 只是让工具链"看得见"该别名，不改变任何既有解析语义。
+  //
+  // `@zcode/*` 这类 workspace 包不需要在此映射——它们由 pnpm 的 node_modules
+  // 符号链接解析，加进来反而会在构建产物里固化源码路径。
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./packages/ui/src/*"]
+    }
+  }
+}
