@@ -962,9 +962,7 @@ function RootInner({
           handleResolveConversationWorkspace={handleResolveConversationWorkspace}
           handleOpenWorkspace={handleOpenWorkspace}
           handleOpenFolderFromWorkspaceMenu={handleOpenFolderFromWorkspaceMenu}
-          handleOpenRemoteWorkspace={
-            allowRemoteWorkspace ? handleOpenRemoteConnection : undefined
-          }
+          handleOpenRemoteWorkspace={allowRemoteWorkspace ? handleOpenRemoteConnection : undefined}
           handleCreateScratchWorkspace={handleCreateScratchWorkspace}
           remoteConnectionInProgress={remoteConnectionInProgress}
           remoteWorkspaceSessions={remoteWorkspaceSessions}
