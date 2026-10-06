@@ -546,7 +546,7 @@ export class ConversationTopicPublisher {
     const streamingAppend = this.projection.establishedStreamingAppend(event);
     const streamingUpperBound =
       streamingAppend === null ? null : utf8JsonByteLength(streamingAppend) + 64;
-    let deltas: ConversationDelta[] | null;
+    let deltas: readonly ConversationDelta[] | null;
     if (
       streamingUpperBound !== null &&
       this.wireSnapshotBytesUpperBound + streamingUpperBound <= projectionLimit
