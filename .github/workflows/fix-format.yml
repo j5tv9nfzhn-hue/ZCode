@@ -1,0 +1,63 @@
+name: Fix formatting
+
+# 一次性格式化 workflow：在 CI 云端跑 `pnpm fmt` 把全仓 2791 个不合规文件的格式
+# 统一成 oxfmt 的风格，然后 commit 回 main。与 fix-lockfile 同理，把本机不该跑的
+# 命令搬到 CI。
+#
+# 唯一性：只在本 workflow 里执行 `pnpm fmt`（没有 --check）。主流程 ci.yml 的
+# `pnpm fmt:check` 保持。跑完后全仓格式合规，fmt:check 恢复绿灯。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      ZCODE_TARGET_OS: win32
+      ZCODE_TARGET_ARCH: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.14.0"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.33.2"
+          run_install: false
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          $env:HUSKY = "0"
+          pnpm install --frozen-lockfile
+
+      # ── 全量格式化 ──
+      # 前置:ci.yml 的 fmt:check 在 2862 文件上发现 2791 份格式问题（oxfmt 风格漂移）。
+      # 本步骤跑通过后，fmt:check 应该转为通过。
+      - name: Format all source files
+        shell: pwsh
+        run: pnpm fmt
+
+      # 把格式化结果 commit 回 main。幂等：如果文件原本格式都是对的，diff 为空，不提交。
+      - name: Commit and push formatting fixes
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if (git diff --quiet) {
+            Write-Host "已无格式问题，无需提交。"
+            exit 0
+          }
+          # 暂存所有已修改文件，排除 .github 之外的生成产物（如有意外变更会一并反映到 diff 里）
+          git add -A
+          git commit -m "style: apply oxfmt across repo to restore fmt:check green"
+          git push
