@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- gitCheckpointRepo 集中维护 checkpoint 的创建/比对/恢复/冲突检测四段共享同一份 repo 解析与 git env 闭包；其中 collectWorkspaceConflicts 需要闭包内的 repo 与 env，拆出会把这两个参数穿透到函数签名上，可读性反而更差。 */
+/* oxlint-disable eslint(max-lines) -- checkpoint 的创建/比对/恢复/冲突检测四段共享同一份 repo 解析与 git env 闭包；其中 collectWorkspaceConflicts 需要闭包内的 repo 与 env，拆出会把这两个参数穿透到函数签名上，可读性反而更差。 */
 import { copyFile, lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import type {
