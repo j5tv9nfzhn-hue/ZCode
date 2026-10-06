@@ -139,6 +139,10 @@ const zhCN: Record<string, string> = {
   "chat.previewCards.openExternalFailed": "无法在浏览器中打开此文件",
   "settings.modelProvider.connectionMode.switchToStartPlan": "切换至体验套餐",
   "chat.composer.contextSearchHint": "输入内容以搜索插件、文件和对话",
+  "chat.liveMetrics.tokensPerSecond": "token/s",
+  "chat.liveMetrics.turns": "{count} 轮",
+  "chat.liveMetrics.steps": "{count} 步调用",
+  "chat.liveMetrics.cumulativeHint": "轮数与步调用为本次会话的累计值，回退不会减少。",
   "chat.composer.contextShortcut": "添加上下文",
   "chat.composer.capabilityShortcut": "选择能力",
   "chat.composer.skillShortcut": "选择技能",
@@ -2067,6 +2071,8 @@ const zhCN: Record<string, string> = {
   "settings.desktopChromiumHardwareAcceleration": "Chrome 硬件加速",
   "settings.desktopChromiumHardwareAccelerationDescription":
     "关闭后可规避部分显卡或驱动导致的白屏、闪退、渲染异常。修改后需重启应用生效。",
+  "settings.desktopChromiumHardwareAccelerationLowSpecHint":
+    "检测到这台机器内存或 CPU 较低，核显硬件加速通常是净负担。建议关闭以减少卡顿。修改后需重启应用生效。",
   "settings.desktopChromiumHardwareAccelerationSavedHint":
     "Chrome 硬件加速设置已保存，重启应用后生效",
   "settings.receivePreviewUpdates": "接受提前收到预览版更新",
@@ -2120,7 +2126,8 @@ const zhCN: Record<string, string> = {
   "settings.modelIoFullRetentionDescription":
     "保留完整的模型请求和响应，不自动压缩、限制大小或删除旧记录。",
   "settings.performanceMode": "性能模式",
-  "settings.performanceModeDescription": "精简渲染输出，提高性能。",
+  "settings.performanceModeDescription":
+    "关闭动画过渡、把代码高亮并发降到 1、生成产物不再自动打开。机器本身较低时也会自动生效。",
   "settings.taskAutoArchive": "自动归档旧任务",
   "settings.taskAutoArchiveDescription":
     "定时扫描最近打开过的工作区，将已完成、无未读、未置顶且超过保留期的任务自动归档。",
@@ -3150,6 +3157,13 @@ const zhCN: Record<string, string> = {
   "settings.modelProvider.models": "模型列表",
   "settings.modelProvider.modelsEmpty": "当前没有配置模型，添加模型后可在聊天中使用。",
   "settings.modelProvider.addModel": "添加模型",
+  "settings.modelProvider.fetchModels": "从端点获取模型",
+  "settings.modelProvider.fetchModels.loading": "正在获取…",
+  "settings.modelProvider.fetchModels.title": "从端点获取模型",
+  "settings.modelProvider.fetchModels.count": "端点返回 {count} 个模型",
+  "settings.modelProvider.fetchModels.empty": "端点没有返回任何模型。",
+  "settings.modelProvider.fetchModels.alreadyConfigured": "已配置",
+  "settings.modelProvider.fetchModels.import": "添加选中的 {count} 个模型",
   "settings.modelProvider.modelId": "模型 ID",
   "settings.modelProvider.modelDisplayName": "显示名称",
   "settings.modelProvider.modelApiFormat.anthropic": "Anthropic Messages",

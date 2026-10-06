@@ -1,0 +1,57 @@
+name: CI
+
+# 质量门：格式 / 静态检查 / 单元测试 / 架构检查。
+# 只做校验，不产出任何交付物，因此不需要上传 artifact。
+#
+# 全部跑在 Windows x64 上，与打包流水线同平台同工具链：
+# pnpm install 的 postinstall 会重建 node-pty 原生模块，跨平台安装出的二进制不同，
+# 在 Linux 上跑测试、在 Windows 上打包，等于测的不是最终要交付的那份代码。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支的新提交取消旧 run，避免排队浪费 Windows 并发额度。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    # 硬编码 Windows runner，不使用 matrix：matrix 是「不小心多出平台」的最短路径。
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      # 打包目标在 job 级固定，使 setup-zcode 的 preflight 能同时校验宿主与声明目标。
+      ZCODE_TARGET_OS: win32
+      ZCODE_TARGET_ARCH: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-zcode
+
+      - name: Check formatting
+        run: pnpm fmt:check
+
+      - name: Lint
+        run: pnpm lint
+
+      # typecheck 用 tsc -b 的 project references 增量构建，冷启动较慢，
+      # 单独一步便于失败时一眼定位。
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      # 架构策略检查：--changed 只看本次改动涉及的模块，走 baseline 比全量快。
+      - name: Architecture check (changed modules)
+        run: pnpm architecture:check --changed
+
+      - name: Check unused dependencies and exports
+        run: pnpm knip

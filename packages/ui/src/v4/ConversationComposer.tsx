@@ -162,6 +162,7 @@ import {
   type V4ComposerConfigPicker,
 } from "@/v4/composer/configPickerState.js";
 import { WebElementContextAttachmentChip } from "@/v4/composer/WebElementContextAttachmentChip.js";
+import { ConversationLiveMetrics } from "@/v4/composer/ConversationLiveMetrics.js";
 import { ConversationSelectionReferenceChip } from "@/v4/composer/ConversationSelectionReferenceChip.js";
 import type { AttachmentPutFn } from "@/v4/composer/attachmentUpload.js";
 import { useScopedConversationTelemetrySupervisor } from "@/v4/telemetry/ConversationTelemetryAttachment.js";
@@ -2297,6 +2298,13 @@ function ConversationComposerImpl({
           </p>
         ) : null}
       </div>
+      {/* 实时指标条：贴输入卡正下方、同宽、随 sticky dock。数据全部来自 v4 投影快照，
+          desktop-continuous 与 mobile replayable 共享同一份事实。 */}
+      <ConversationLiveMetrics
+        usage={composerUsage}
+        phase={composerPhase}
+        rows={snapshot?.rows.window}
+      />
       <ImagePreviewDialog
         initialIndex={attachmentPreviewIndex}
         items={composerMediaPreviewItems}

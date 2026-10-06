@@ -44,6 +44,9 @@ const markdownFenceLinePattern = /^( {0,3})(`{3,}|~{3,})(.*)$/;
  * 同一个 Markdown 块；代码围栏里的相似文本必须保持原样。
  */
 export function normalizeConsecutiveMarkdownImageBlocks(markdown: string): string {
+  // 唯一的改写是「合并连续纯图片行之间的空行」，没有 `![` 就一定不产生改动。
+  // 流式输出期间本函数每个 token 都会被调用，这里避免无谓的整串 split/map/join。
+  if (!markdown.includes("![")) return markdown;
   const lines = markdown.split("\n");
   const normalized: string[] = [];
   let activeFenceMarker: "`" | "~" | null = null;

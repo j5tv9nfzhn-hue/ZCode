@@ -26,6 +26,8 @@ const STREAM_MIRROR_MAX_REPLAY_BATCHES = 60;
 const STREAM_MIRROR_MAX_REPLAY_BYTES = 512 * 1024;
 const STREAM_MIRROR_MAX_BATCH_BYTES = 512 * 1024;
 const STREAM_MIRROR_TEXT_OP_MAX_CHARS = 128 * 1024;
+/** 批事件外壳（lease/seq/host 标识等）的估算字节数，用于分片时避免整批反复序列化。 */
+const STREAM_MIRROR_BATCH_ENVELOPE_BYTES = 1024;
 const OWNER_COMMAND_TIMEOUT_MS = 30_000;
 const SESSION_MESSAGE_DELIVERY_TIMEOUT_MS = 30_000;
 
@@ -72,6 +74,13 @@ interface PendingStreamBatch {
   nextOpSeq: number;
   pendingOps: TaskStreamMirrorPublishOp[];
   replay: TaskStreamMirrorBatchEvent[];
+  /**
+   * `replay` 的累计字节数，增量维护。
+   *
+   * 旧实现每次 flush 都对整个 replay 数组重新 JSON.stringify 累加：长任务里
+   * replay 常驻 60 个批，每秒一次全量序列化，既是 CPU 热点也制造大量临时字符串。
+   */
+  replayBytes: number;
   replayUnavailable: boolean;
   timer: ReturnType<typeof setTimeout> | null;
   replayInitializedHostIds: Set<string>;
@@ -133,6 +142,12 @@ export class TaskRealtimeBus {
     string,
     PendingSessionMessageDelivery
   >();
+  /**
+   * 批事件 / op 的序列化字节数缓存，按对象身份存放。
+   * WeakMap：随事件一起回收，不会变成新的常驻泄漏点。
+   */
+  private readonly batchBytesCache = new WeakMap<TaskStreamMirrorBatchEvent, number>();
+  private readonly opBytesCache = new WeakMap<TaskStreamMirrorOp, number>();
 
   constructor(options: TaskRealtimeBusOptions = {}) {
     this.logger = options.logger ?? defaultLogger;
@@ -442,6 +457,7 @@ export class TaskRealtimeBus {
       nextOpSeq: 1,
       pendingOps: [],
       replay: [],
+      replayBytes: 0,
       replayUnavailable: false,
       timer: null,
       replayInitializedHostIds: new Set<string>(),
@@ -503,7 +519,7 @@ export class TaskRealtimeBus {
         (op) => op.kind === "stream_event" && this.isTerminalEventType(op.event.type),
       ),
     };
-    if (JSON.stringify(event).length > STREAM_MIRROR_MAX_BATCH_BYTES) {
+    if (this.measureBatchBytes(event) > STREAM_MIRROR_MAX_BATCH_BYTES) {
       // 单次 mirror batch 过大时，RPC/base64/JSON 会在链路上多次复制，导致 host 堆内存打满。
       // owner 仍依赖 mirror seq 流渲染主动发送端，所以这里对 owner 做小批次分片；observer
       // 不消费正文流，只收到 snapshot invalidation/remoteGenerating 状态。
@@ -527,6 +543,7 @@ export class TaskRealtimeBus {
     // 这里只给 owner 发送连续小批次；observer 和 late subscriber 统一走快照补齐，避免大 payload 扩散。
     batch.replayUnavailable = true;
     batch.replay = [];
+    batch.replayBytes = 0;
     for (const chunk of this.splitOversizedBatchForOwner(batch, event)) {
       this.deliverStreamBatchToHost(batch.ownerHostId, batch, chunk, "relay_owner");
     }
@@ -572,16 +589,20 @@ export class TaskRealtimeBus {
       pendingOps = [];
     };
 
+    // 增量累加字节数而不是每个候选都整批 stringify：同一批 op 会被反复试装，
+    // 逐次序列化会产生 O(n²) 的临时字符串，是 oversized 路径上的主要 CPU 开销。
+    let pendingBytes = 0;
     for (const op of event.ops) {
-      const candidate = [...pendingOps, op];
-      const candidateChunk = createChunk(candidate, batch.nextBatchSeq);
+      const opBytes = this.measureOpBytes(op);
       if (
         pendingOps.length > 0 &&
-        JSON.stringify(candidateChunk).length > STREAM_MIRROR_MAX_BATCH_BYTES
+        STREAM_MIRROR_BATCH_ENVELOPE_BYTES + pendingBytes + opBytes > STREAM_MIRROR_MAX_BATCH_BYTES
       ) {
         flushPending();
+        pendingBytes = 0;
       }
       pendingOps.push(op);
+      pendingBytes += opBytes;
     }
     flushPending();
     return chunks;
@@ -729,17 +750,50 @@ export class TaskRealtimeBus {
   private rememberReplayBatch(batch: PendingStreamBatch, event: TaskStreamMirrorBatchEvent): void {
     // 无上限 replay 在长任务中会线性占用主进程内存。
     // 这里恢复批次数+字节数双阈值，超限后由 replayVisibleRunsToHost 触发 stream_mirror_gap 并走快照补齐。
+    // 字节数增量维护（每个批事件只序列化一次），避免每秒对整份 replay 重新序列化。
     batch.replay.push(event);
+    batch.replayBytes += this.measureBatchBytes(event);
     while (batch.replay.length > STREAM_MIRROR_MAX_REPLAY_BATCHES) {
-      batch.replay.shift();
+      const dropped = batch.replay.shift();
+      if (dropped) {
+        batch.replayBytes -= this.measureBatchBytes(dropped);
+      }
     }
-    while (this.replayBytes(batch.replay) > STREAM_MIRROR_MAX_REPLAY_BYTES) {
-      batch.replay.shift();
+    while (batch.replayBytes > STREAM_MIRROR_MAX_REPLAY_BYTES) {
+      const dropped = batch.replay.shift();
+      if (!dropped) {
+        batch.replayBytes = 0;
+        break;
+      }
+      batch.replayBytes -= this.measureBatchBytes(dropped);
     }
   }
 
-  private replayBytes(replay: TaskStreamMirrorBatchEvent[]): number {
-    return replay.reduce((total, replayEvent) => total + JSON.stringify(replayEvent).length, 0);
+  /**
+   * 批事件的序列化字节数，按对象身份缓存。
+   *
+   * 同一个 event 会被 flushBatch 的上限判定与 rememberReplayBatch 各测一次；
+   * WeakMap 让每个事件在整个生命周期里只被 stringify 一次，且不阻止回收。
+   */
+  private measureBatchBytes(event: TaskStreamMirrorBatchEvent): number {
+    const cached = this.batchBytesCache.get(event);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const bytes = JSON.stringify(event).length;
+    this.batchBytesCache.set(event, bytes);
+    return bytes;
+  }
+
+  /** 单个 op 的序列化字节数，按对象身份缓存（分片时同一批 op 会被反复累加）。 */
+  private measureOpBytes(op: TaskStreamMirrorOp): number {
+    const cached = this.opBytesCache.get(op);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const bytes = JSON.stringify(op).length;
+    this.opBytesCache.set(op, bytes);
+    return bytes;
   }
 
   private replayVisibleRunsToHost(hostId: string, workspaceKeys: Iterable<string>): void {

@@ -80,8 +80,16 @@ export function useWorkspaceActiveTaskState({
   selectedProvider,
   intl,
 }: UseWorkspaceActiveTaskStateParams) {
-  const workspaceState = useZCodeSessionStore((state) =>
-    selectWorkspaceZCodeState(state, workspaceAbsPath, workspaceIdentity),
+  // 只订阅 getTaskMeta 真正读的两个字段。整 workspace 桶会随 taskRuntimeByTaskId、
+  // configOptions、workspaceInit 等无关字段换引用，把标题栏/Shell 一起拖进重渲染。
+  const taskListCache = useZCodeSessionStore(
+    (state) => selectWorkspaceZCodeState(state, workspaceAbsPath, workspaceIdentity).taskListCache,
+  );
+  const optimisticTaskMeta = useZCodeSessionStore((state) =>
+    activeTaskId
+      ? selectWorkspaceZCodeState(state, workspaceAbsPath, workspaceIdentity)
+          .optimisticTaskListByTaskId[activeTaskId]
+      : undefined,
   );
   const activeTaskQueryMeta = useTaskQueryCacheStore((state) => {
     if (!activeTaskId) {
@@ -109,11 +117,23 @@ export function useWorkspaceActiveTaskState({
     // 重启恢复后 raw snapshot meta 可能先进入 workspace store，而 sqlite/list
     // query cache 里保留着 titleOverridden 的手动标题。Header 必须按同一套 title authority
     // 合并两边，否则当前 task 会看起来被还原成生成标题或首条 query。
+    //
+    // 传入的是收窄后的两个字段（getTaskMeta 的契约本身就只接受这两个键），
+    // 保持 getTaskMeta 为唯一合并实现，不在这里复制它的读写顺序。
     return (
-      mergeTaskMetaCandidates(getTaskMeta(workspaceState, activeTaskId), activeTaskQueryMeta) ??
-      null
+      mergeTaskMetaCandidates(
+        getTaskMeta(
+          {
+            taskListCache,
+            optimisticTaskListByTaskId:
+              optimisticTaskMeta === undefined ? undefined : { [activeTaskId]: optimisticTaskMeta },
+          },
+          activeTaskId,
+        ),
+        activeTaskQueryMeta,
+      ) ?? null
     );
-  }, [activeTaskId, activeTaskQueryMeta, workspaceState]);
+  }, [activeTaskId, activeTaskQueryMeta, optimisticTaskMeta, taskListCache]);
 
   const activeTaskSnapshotMeta = useActiveTaskSnapshotMeta(
     workspaceAbsPath,

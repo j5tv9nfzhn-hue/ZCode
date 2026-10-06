@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- workspace 行任务列表需要把分片查询、缓存展示和跨端 membership 订阅保持在同一 hook 内，拆分会增加缓存一致性风险。 */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { IServiceAccessor } from "@zcode/services";
 import type { ZCodeWorkspaceEvent } from "@zcode/shared";
 import { logger } from "@/logger.js";
@@ -29,7 +30,9 @@ import {
 } from "@/hooks/workspaceTaskListDisplayGroups.js";
 import {
   buildWorkspaceRemoteSessionSignature,
-  buildWorkspaceTaskListVersionSignature,
+  buildWorkspaceTaskListVersionEntries,
+  joinWorkspaceTaskListVersionSignature,
+  parseWorkspaceTaskListVersions,
 } from "@/hooks/workspaceTaskListRefreshSignatures.js";
 import { shouldRefetchTaskListMembershipForWorkspaceEvent } from "@/lib/taskListRefreshPolicy.js";
 import { syncTaskUnreadFromStatusWorkspaceEvent } from "@/lib/taskStatusUnreadSync.js";
@@ -226,25 +229,32 @@ export function useWorkspaceTaskLists(params: {
   const nextRequestIdRef = useRef(0);
   const rerunRequestedRef = useRef(false);
   const groupCacheRef = useRef<Map<string, WorkspaceTaskListGroup>>(new Map());
-  const taskListVersionSignature = useZCodeSessionStore((state) =>
-    buildWorkspaceTaskListVersionSignature(
-      params.workspaceTabs.map((tab) => {
-        const workspaceKey = buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity);
-        const workspaceState = selectWorkspaceZCodeState(
-          state,
-          tab.workspacePath,
-          tab.workspaceIdentity,
-        );
-        return [workspaceKey, workspaceState.taskListVersion] as const;
-      }),
+  const taskListVersionEntries = useZCodeSessionStore(
+    // useShallow + 原始字符串条目：与 store 提交解耦，避免每次提交都做一次序列化往返。
+    useShallow((state) =>
+      buildWorkspaceTaskListVersionEntries(
+        params.workspaceTabs.map((tab) => {
+          const workspaceKey = buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity);
+          const workspaceState = selectWorkspaceZCodeState(
+            state,
+            tab.workspacePath,
+            tab.workspaceIdentity,
+          );
+          return [workspaceKey, workspaceState.taskListVersion] as const;
+        }),
+      ),
     ),
+  );
+  const taskListVersionSignature = useMemo(
+    () => joinWorkspaceTaskListVersionSignature(taskListVersionEntries),
+    [taskListVersionEntries],
   );
   const optimisticTaskOverlayByWorkspaceKey = useWorkspaceTaskOptimisticOverlayByWorkspaceKey(
     params.workspaceTabs,
   );
   const taskListVersionByWorkspaceKey = useMemo(
-    () => new Map<string, number>(JSON.parse(taskListVersionSignature) as Array<[string, number]>),
-    [taskListVersionSignature],
+    () => parseWorkspaceTaskListVersions(taskListVersionEntries),
+    [taskListVersionEntries],
   );
   const remoteSessionSignature = useMemo(
     () =>

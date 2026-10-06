@@ -12,9 +12,16 @@ import {
 } from "@/components/ui/tooltip.js";
 import { ToolSummaryRow, type ToolSummaryAction } from "@/ToolCallBlocks/ToolSummaryRow.js";
 import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
+import { createBoundedStateMap } from "@/lib/boundedStateMap.js";
 
-const toolLayoutOpenState = new Map<string, boolean>();
-// 内存诊断计数器：该表按 toolId 只增不减，先落日志。
+const MAX_TOOL_LAYOUT_OPEN_STATE_ENTRIES = 1_024;
+/**
+ * 折叠状态按 toolId 记忆。上限 1024 条、命中刷新（近似 LRU）：
+ * 键是渲染实例标识，会随长会话单调增长；条目被淘汰后回落默认折叠，
+ * 与「用户没在这条上点过」等价，不需要额外失效协议。
+ */
+const toolLayoutOpenState = createBoundedStateMap<boolean>(MAX_TOOL_LAYOUT_OPEN_STATE_ENTRIES);
+// 内存诊断计数器：该表按 toolId 记忆且有界，观察是否触到上限。
 uiMemoryDiagnosticsRegistry.register("toolLayout", () => ({ openState: toolLayoutOpenState.size }));
 const TOOL_CONTENT_COLLAPSE_UNMOUNT_DELAY_MS = 300;
 const TOOL_CONTENT_SHELL_CLASSNAME = "text-popover-foreground outline-none";

@@ -106,26 +106,15 @@ function requiresProviderRuntime(argv: readonly string[]): boolean {
   if (argv.some((arg) => arg === "--help" || arg === "-h" || arg === "--version" || arg === "-v")) {
     return false;
   }
-  if (
-    argv.some(
-      (arg) =>
-        arg === "--prompt" ||
-        arg.startsWith("--prompt=") ||
-        arg === "--target" ||
-        arg.startsWith("--target="),
-    )
-  ) {
-    return true;
-  }
-
+  // 交互式命令面（TUI / --prompt / --target / login / logout）已随 CLI 产品移除，
+  // 此处只保留运行时入口：协议服务端、插件宿主与动态工作流子进程。
   const command = argv[0];
   if (command === undefined || command.startsWith("-")) return true;
   return (
-    command === "tui" ||
     command === "app-server" ||
     command === "agent-server" ||
-    command === "login" ||
-    command === "logout"
+    command === "plugin-host" ||
+    command === "dwf-child"
   );
 }
 

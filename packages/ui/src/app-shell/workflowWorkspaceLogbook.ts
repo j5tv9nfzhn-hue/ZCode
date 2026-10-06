@@ -7,6 +7,7 @@
 
 import type { PhaseNaming } from "@/components/workflow-graph/phase-name.js";
 import type { WorkspaceCardModel } from "@/app-shell/workflowWorkspaceTranscript.js";
+import { createBoundedStateMap } from "@/lib/boundedStateMap.js";
 
 export interface WorkspaceChapter {
   key: string;
@@ -128,7 +129,13 @@ export function peekLinesOf(result: unknown, max = 3): PeekLine[] {
 }
 
 // 展开态按卡记忆（与 ToolLayout 的模块级 map 同一做法）：收起再展开、切 tab 再回来都还在。
-const openState = new Map<string, boolean>();
+//
+// 用有界表而不是裸 Map：键是 workflow run 卡片的 persistKey，会随长会话里的工作流轮次
+// 单调增长，而这里存的只是一个布尔选择。淘汰后读到默认值，语义上等价于「用户没有在这张
+// 卡上做过选择」——与 ToolCallBlocks 侧同名机制（workflowCardOpenState / toolLayoutOpenState）
+// 的口径一致，之前只有这一处漏了上限。
+const MAX_WORKFLOW_LOGBOOK_OPEN_STATE_ENTRIES = 512;
+const openState = createBoundedStateMap<boolean>(MAX_WORKFLOW_LOGBOOK_OPEN_STATE_ENTRIES);
 
 export function rememberedOpen(key: string): boolean {
   return openState.get(key) ?? false;

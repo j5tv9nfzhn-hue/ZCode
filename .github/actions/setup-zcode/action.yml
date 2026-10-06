@@ -1,0 +1,110 @@
+name: setup-zcode
+description: >-
+  ZCode 仓库统一的 Windows x64 工具链准备与依赖安装。所有 job 都必须经过这一步，
+  因此「只产出 Windows x64」这条强制约束也随它对所有 workflow 生效。
+
+inputs:
+  install-deps:
+    description: 是否执行 pnpm install（需要跑构建/测试时为 true，只做静态检查可关掉省时间）
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # ── 强制约束第一层：宿主必须是 Windows x64，声明目标也必须是 win32/x64 ──
+    # 放在最前面而不是只写进 job 的 runs-on，是因为 runs-on 会被 matrix 或后续编辑改掉，
+    # 而这里是所有 job 的必经之路。改 workflow 绕不过这一层。
+    - name: Assert build target is Windows x64
+      shell: pwsh
+      run: node scripts/ci/assert-build-target.mjs --preflight
+
+    - name: Read expected toolchain from mise.toml
+      shell: pwsh
+      # mise.toml 是 Node/pnpm 版本的唯一权威（见仓库 AGENTS.md）。CI 不依赖 mise 的 [env]，
+      # 所以这里从 mise.toml 读出期望值，再用 $GITHUB_ENV 传给后续 step。
+      # 必须用 $GITHUB_ENV 而不是 $env:：每个 run: step 是独立 shell 进程，
+      # step 内设的 $env: 变量不会传给后面的 step。
+      run: |
+        $node = (Select-String -Path mise.toml -Pattern '^\s*node\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+        $pnpm = (Select-String -Path mise.toml -Pattern '^\s*pnpm\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+        if (-not $node -or -not $pnpm) {
+          Write-Error "无法从 mise.toml 解析 node / pnpm 版本"
+        }
+        "ZCODE_EXPECTED_NODE=$node" >> $env:GITHUB_ENV
+        "ZCODE_EXPECTED_PNPM=$pnpm" >> $env:GITHUB_ENV
+        Write-Host "mise.toml 要求 node=$node pnpm=$pnpm"
+
+    # 版本号显式写死而不是用 mise.toml 的值：actions/setup-node 的 node-version
+    # 必须在 workflow/action 定义里是静态的。同时下一步会机械校验两者一致，漂移会直接失败。
+    # 仓库在 electron-builder.config.js 里对 electronVersion 用了同样的「写死 + 注释」手法。
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "24.14.0"
+
+    - name: Assert Node.js version matches mise.toml
+      shell: pwsh
+      run: |
+        $expected = $env:ZCODE_EXPECTED_NODE
+        $actual = (node -v) -replace '^v', ''
+        Write-Host "node: 期望 $expected，实际 $actual"
+        if ($actual -ne $expected) {
+          Write-Error "Node 版本与 mise.toml 不一致：期望 $expected，实际 $actual"
+        }
+
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: "10.33.2"
+        run_install: false
+
+    - name: Assert pnpm version matches mise.toml
+      shell: pwsh
+      run: |
+        $expected = $env:ZCODE_EXPECTED_PNPM
+        $actual = (pnpm -v).Trim()
+        Write-Host "pnpm: 期望 $expected，实际 $actual"
+        if ($actual -ne $expected) {
+          Write-Error "pnpm 版本与 mise.toml 不一致：期望 $expected，实际 $actual"
+        }
+
+    # pnpm store 缓存：monorepo 全量 install 是本流水线最慢的一段，命中率直接决定 CI 时长。
+    # key 用 lockfile 哈希；lockfile 变了就是新缓存桶，restore-keys 兜底做 warm start。
+    - name: Resolve pnpm store path
+      id: pnpm-store
+      shell: pwsh
+      run: echo "path=$(pnpm store path --silent)" >> $env:GITHUB_OUTPUT
+
+    - name: Cache pnpm store
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: windows-x64-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+        restore-keys: |
+          windows-x64-pnpm-store-
+
+    # Electron 运行时与 electron-builder 辅助包单独一层缓存。
+    # Windows 上两者的落盘位置与 Linux/macOS 不同，这里按 Windows 路径写死；
+    # 仓库的 electron-builder.config.js / bundle.mjs 会优先走 npmmirror 源。
+    - name: Cache Electron and electron-builder binaries
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~\AppData\Local\electron\Cache
+          ~\AppData\Local\electron-builder\Cache
+        key: windows-x64-electron-${{ hashFiles('packages/desktop/package.json') }}
+        restore-keys: |
+          windows-x64-electron-
+
+    - name: Install dependencies
+      if: inputs.install-deps == 'true'
+      shell: pwsh
+      run: |
+        # HUSKY=0：根 package.json 的 prepare 脚本是 husky。CI 里没有理由装 git hook，
+        # 而且 actions/checkout 出来的仓库装了 hook 只会拖慢 install。
+        # ZCODE_TARGET_OS / ZCODE_TARGET_ARCH 由 workflow 的 job 级 env 提供：
+        # 每个 run: step 是独立 shell，step 内设的环境变量不会传给后续 step，
+        # 而打包阶段的原生资产准备与产物命名都依赖这两个值。
+        $env:HUSKY = "0"
+        pnpm install --frozen-lockfile

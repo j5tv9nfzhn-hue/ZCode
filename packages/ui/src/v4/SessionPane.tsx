@@ -36,8 +36,9 @@ import type {
   CommandAck,
   CommandEnvelope,
   CommandType,
-  ConversationSnapshot,
+  ConversationRow,
   ConversationRowTarget,
+  ConversationSnapshot,
   SessionErrorInfo,
   SessionModelTransition,
   V4ConversationFileChangesResult,
@@ -176,6 +177,7 @@ import {
   buildWorkflowGraphByToolCallId,
 } from "@/v4/workflowRunCardJoin.js";
 import { buildWorkflowDraftByToolCallId } from "@/v4/workflowDraftJoin.js";
+import { isAmendWorkflowToolCall, isCreateWorkflowToolCall } from "@/lib/workflowToolNames.js";
 import {
   WORKFLOW_RUN_DIRECTORY_LIMIT,
   countEndedWorkflowRuns,
@@ -390,6 +392,48 @@ const EMPTY_SUBAGENT_PROJECTION: NonNullable<ConversationSnapshot["subagents"]> 
 };
 
 const MAX_CONVERSATION_FILE_CHANGES_CACHE_ENTRIES = 20;
+
+/**
+ * 分享链路（render units / navigator items / eligible / productTurnIds）的非分享态占位值。
+ *
+ * 用模块级常量而不是 useMemo(() => [])：引用稳定才能让下游 memo 在非分享态完全短路，
+ * 流式 delta 帧换新的 rows.window 也不会连带重建下游数组。
+ */
+const EMPTY_SHARE_RENDER_UNITS: ReturnType<typeof buildConversationTurnRenderUnits> = [];
+const EMPTY_SHARE_PRODUCT_TURN_IDS: string[] = [];
+const EMPTY_SHARE_TURN_FINGERPRINTS = new Map<string, string>();
+
+/** 工作流联接表在「窗口内没有任何工作流行」时的共享空表（引用稳定，避免下游 memo 空转重建）。 */
+const EMPTY_WORKFLOW_GRAPH_MAP: ReturnType<typeof buildWorkflowGraphByToolCallId> = new Map();
+const EMPTY_WORKFLOW_DRAFT_MAP: ReturnType<typeof buildWorkflowDraftByToolCallId> = new Map();
+
+/**
+ * 窗口里是否存在「可能产出工作流联接表」的行。
+ *
+ * 判定口径必须与两个 build 函数一致，宁可多扫不可漏判：
+ * - 草稿表：CreateWorkflow / AmendWorkflow 工具行（与 workflowDraftLineage 同口径）；
+ * - 图表：display.kind === "create_workflow" 的 toolCall 行，以及带 workflowLaunch
+ *   元数据的 turnHeader / userInput 行（与 workflowGraphOfRow 同口径）。
+ *
+ * 这里只做 kind + 字面量比较、不分配对象，代价远低于无条件下游建两张 Map。
+ */
+function hasWorkflowJoinSourceRows(rows: readonly ConversationRow[] | undefined): boolean {
+  for (const row of rows ?? []) {
+    if (row.kind === "toolCall") {
+      if (isCreateWorkflowToolCall(row) || isAmendWorkflowToolCall(row)) {
+        return true;
+      }
+      if (row.display?.kind === "create_workflow") {
+        return true;
+      }
+      continue;
+    }
+    if ((row.kind === "turnHeader" || row.kind === "userInput") && row.workflowLaunch) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function toComposerUiError(
   sessionId: string | null | undefined,
@@ -647,8 +691,13 @@ export function SessionPane({
     onDismiss: dismissShareSelectionPanel,
   });
   const shareRenderUnits = useMemo(
-    () => buildConversationTurnRenderUnits(snapshot?.rows.window ?? []),
-    [snapshot?.rows.window],
+    () =>
+      // 分享链的唯一消费者都被 shareActive 门控（dock、selection panel、timeline 选择态）。
+      // 非分享态短路成常量空数组：否则流式输出的每个 delta 帧都会重建整棵轮渲染单元。
+      shareActive
+        ? buildConversationTurnRenderUnits(snapshot?.rows.window ?? [])
+        : EMPTY_SHARE_RENDER_UNITS,
+    [shareActive, snapshot?.rows.window],
   );
   const shareItems = useMemo(
     () =>
@@ -719,8 +768,13 @@ export function SessionPane({
   });
   const [sharePreflightVersion, setSharePreflightVersion] = useState(0);
   const selectedShareTurnFingerprints = useMemo(
-    () =>
-      new Map(
+    () => {
+      // 指纹按选中轮逐个 O(rows) 扫描；非分享态没有选中轮，
+      // 否则流式期每个 delta 帧都要白扫一遍整窗。
+      if (!shareActive || selectedShareProductTurnIds.length === 0) {
+        return EMPTY_SHARE_TURN_FINGERPRINTS;
+      }
+      return new Map(
         selectedShareProductTurnIds.map((productTurnId) => [
           productTurnId,
           conversationShareTurnFingerprint(
@@ -737,11 +791,13 @@ export function SessionPane({
             },
           ),
         ]),
-      ),
+      );
+    },
     [
       remoteSessionId,
       selectedShareProductTurnIds,
       sessionId,
+      shareActive,
       sharePreflightVersion,
       snapshot?.logEpoch,
       snapshot?.revision,
@@ -751,6 +807,8 @@ export function SessionPane({
     ],
   );
   const eligibleShareProductTurnIds = useMemo(() => {
+    // 同 shareRenderUnits：非分享态没有任何消费者，不做 O(rows) 的 rowId 建图。
+    if (!shareActive) return EMPTY_SHARE_PRODUCT_TURN_IDS;
     const rowsById = new Map((snapshot?.rows.window ?? []).map((row) => [row.rowId, row]));
     const seen = new Set<string>();
     return eligibleShareItems.flatMap((item) => {
@@ -759,7 +817,7 @@ export function SessionPane({
       seen.add(productTurnId);
       return [productTurnId];
     });
-  }, [eligibleShareItems, snapshot?.rows.window]);
+  }, [shareActive, eligibleShareItems, snapshot?.rows.window]);
   const sharePreflightCacheRef = useRef(new Map<string, ConversationShareTurnPreflightResult>());
   // 传输类失败会被按 turn 缓存成阻断项，仅靠选择变化无法再次触发 RPC；
   // 重试 token 变化时清缓存并重新发起，避免一次网络抖动把用户卡死在选择阶段。
@@ -1004,9 +1062,17 @@ export function SessionPane({
       timers.clear();
     };
   }, [lease, sessionId]);
-  const pluginReferenceIconsEnabled =
-    isSessionPluginCatalogReady(state.status, sessionId, snapshot?.sessionId) &&
-    hasPluginReferenceUserRows(snapshot?.rows.window ?? []);
+  // 目录就绪是纯本地布尔；行扫描只在此后才需要做。
+  const pluginCatalogReady = isSessionPluginCatalogReady(
+    state.status,
+    sessionId,
+    snapshot?.sessionId,
+  );
+  const hasPluginReferenceRows = useMemo(
+    () => pluginCatalogReady && hasPluginReferenceUserRows(snapshot?.rows.window ?? []),
+    [pluginCatalogReady, snapshot?.rows.window],
+  );
+  const pluginReferenceIconsEnabled = pluginCatalogReady && hasPluginReferenceRows;
   // send_result 的落定信号：用户消息真正画进对话历史。z-code 没有乐观渲染，
   // 气泡必须等投影回流出 userInput row 才出现，所以 ACK accepted 不能算发送完成。
   // 取 useEffect 而非 store 订阅回调 —— effect 在 DOM commit 之后跑，此刻气泡已在屏幕上。
@@ -1156,7 +1222,12 @@ export function SessionPane({
       scopeKey,
       logEpoch: snapshot?.logEpoch,
       phase: snapshot?.control.phase,
-      completedTurn: resolveLatestCompletedAssistantPreviewTurn(snapshot?.rows.window ?? []),
+      // 未启用该自动打开能力时闸门不会消费 completedTurn，省掉整窗扫描。
+      ...(enabled
+        ? {
+            completedTurn: resolveLatestCompletedAssistantPreviewTurn(snapshot?.rows.window ?? []),
+          }
+        : {}),
     });
     assistantPreviewPptxGateRef.current = result.state;
     if (result.target !== undefined) {
@@ -1828,15 +1899,29 @@ export function SessionPane({
   );
   // 发起 toolCallId → 静态图：图是 run 的属性，
   // 三种来源的轮尾 run 卡都到这一张表取图。行窗口一遍建成，随窗口重建。
-  const workflowGraphByToolCallId = useMemo(
-    () => buildWorkflowGraphByToolCallId(snapshot?.rows.window),
+  const hasWorkflowRows = useMemo(
+    () => hasWorkflowJoinSourceRows(snapshot?.rows.window),
     [snapshot?.rows.window],
+  );
+  // 发起 toolCallId → 静态图：图是 run 的属性，
+  // 三种来源的轮尾 run 卡都到这一张表取图。
+  // 只有窗口里确实存在工作流行时才建表：绝大多数会话没有工作流，
+  // 无条件建表会让流式期每个 delta 帧都白扫一遍整窗。
+  const workflowGraphByToolCallId = useMemo(
+    () =>
+      hasWorkflowRows
+        ? buildWorkflowGraphByToolCallId(snapshot?.rows.window)
+        : EMPTY_WORKFLOW_GRAPH_MAP,
+    [hasWorkflowRows, snapshot?.rows.window],
   );
   // 工作流工具行 → 草稿位置：稿号与
   // 「后面还有更新的一稿」都只能从行序读出，行窗口一遍建成，随窗口重建。
   const workflowDraftByToolCallId = useMemo(
-    () => buildWorkflowDraftByToolCallId(snapshot?.rows.window),
-    [snapshot?.rows.window],
+    () =>
+      hasWorkflowRows
+        ? buildWorkflowDraftByToolCallId(snapshot?.rows.window)
+        : EMPTY_WORKFLOW_DRAFT_MAP,
+    [hasWorkflowRows, snapshot?.rows.window],
   );
   // Workflow 通知 manifest 的升级条目 Waiting→Answered 联查表（runId → 停驻 qid 集合）。
   const workflowRunPendingQuestionsByRunId = useMemo(

@@ -2,6 +2,7 @@ import { FileTextIcon, GlobeIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { MessageFileLinkTarget } from "@/components/ai-elements/message.js";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
+import { useResourceBudget } from "@/hooks/useResourceBudget.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import {
   type AssistantPreviewCard,
@@ -198,8 +199,12 @@ export function AssistantPreviewCards({
     workspaceRemoteSessionId,
   });
 
+  // 低配机器（或用户手动开了性能模式）不自动打开生成产物：自动打开会同时拉起系统
+  // 预览/转换进程，在只有两个物理核的机器上这一步常常就是卡顿来源。用户仍可手动点开。
+  const autoOpenGeneratedDocs = useResourceBudget().renderer.autoOpenGeneratedDocs;
+
   useEffect(() => {
-    if (!settled || !autoOpenPptxKey || !onAutoOpenPptx) return;
+    if (!settled || !autoOpenGeneratedDocs || !autoOpenPptxKey || !onAutoOpenPptx) return;
 
     const request = buildAssistantPreviewPptxAutoOpenRequest(visibleCards, autoOpenPptxKey, {
       workspacePath,
@@ -212,6 +217,7 @@ export function AssistantPreviewCards({
     // 完全同源，不会打开卡片中并不存在的文件。
     onAutoOpenPptx(request);
   }, [
+    autoOpenGeneratedDocs,
     autoOpenPptxKey,
     onAutoOpenPptx,
     settled,

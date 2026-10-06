@@ -24,10 +24,6 @@ run = "mise exec -- node scripts/mise-run.mjs pnpm dev:desktop:test"
 description = "Start the desktop app against the production environment."
 run = "mise exec -- node scripts/mise-run.mjs pnpm dev:desktop:prod"
 
-[tasks.dev-web]
-description = "Start the server and web client dev servers."
-run = "mise exec -- node scripts/mise-run.mjs pnpm dev:web"
-
 [tasks.typecheck]
 description = "Run the root TypeScript project references check."
 run = "mise exec -- node scripts/mise-run.mjs pnpm typecheck"

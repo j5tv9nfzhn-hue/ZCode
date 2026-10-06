@@ -202,6 +202,22 @@ export const sessionUsageStateSchema = z.object({
     cacheReadTokens: z.number(),
     cacheWriteTokens: z.number(),
   }),
+  /**
+   * additive：会话累计计数器，供 composer 下方的实时指标条使用。
+   *
+   * - `turns`：本会话已开始的轮数（每个 turnHeader row 计一轮）；
+   * - `steps`：本会话已发起的工具调用步数（每个 toolCall row 计一步）。
+   *
+   * 必须由 CLI 投影下发**全量口径**：`rows.window` 只是尾部窗口，客户端据此派生
+   * 会在长会话里系统性少算。旧 CLI 不发送该字段时客户端回落到窗口内计数（可能偏低），
+   * 因此这里是 optional 而不是带 default 的必填——缺省即「未知」，不是「零」。
+   */
+  counters: z
+    .object({
+      turns: z.number(),
+      steps: z.number(),
+    })
+    .optional(),
 });
 export type SessionUsageState = z.infer<typeof sessionUsageStateSchema>;
 

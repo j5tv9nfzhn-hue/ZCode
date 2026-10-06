@@ -37,14 +37,8 @@ modules:
   - id: server
     roots: [packages/server/src]
     managed: false
-  - id: zcode-server-cli
-    roots: [packages/zcode-server-cli/src]
-    managed: false
   - id: ui
     roots: [packages/ui/src]
-    managed: false
-  - id: web
-    roots: [packages/web/src]
     managed: false
   - id: desktop
     roots: [packages/desktop/src]

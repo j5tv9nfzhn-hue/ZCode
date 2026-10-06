@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- 模型供应商卡片仍在迁移期集中维护多个紧耦合区块，后续拆分时再移除。 */
 import {
   useCallback,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -16,15 +17,24 @@ import type { ProviderApiType } from "@zcode/provider";
 import {
   TID_MODEL_PROVIDER_ADD_MODEL_BUTTON,
   TID_MODEL_PROVIDER_BASE_URL_INPUT,
+  TID_MODEL_PROVIDER_FETCH_MODELS_BUTTON,
   TID_MODEL_PROVIDER_MODEL_DELETE_BUTTON,
   TID_MODEL_PROVIDER_MODEL_INPUT,
   TID_MODEL_PROVIDER_NAME_EDIT_BUTTON,
   TID_MODEL_PROVIDER_NAME_INPUT,
   testId,
 } from "@zcode/shared";
-import { InfoIcon, LockKeyholeIcon, Plus, Pencil, Trash2, MoreHorizontal } from "lucide-react";
+import { InfoIcon, LockKeyholeIcon, Plus, Pencil, Trash2, MoreHorizontal, Download } from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog.js";
+import { Checkbox } from "@/components/ui/checkbox.js";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -464,24 +474,200 @@ export function ProviderModelsSection({
       })
     : null;
 
+  // ── 从 provider 端点发现模型（GET {baseUrl}/models）──
+  // 发现动作走 providerSettingsService（Host 进程执行），Renderer 不直连网络，也不接触 API Key。
+  // 不自动落库：拉到结果只进本地组件状态并弹出勾选框，只有用户在对话框里确认的条目
+  // 才会经 onAddModel 写入 provider 配置。刷新/关闭对话框即丢弃。
+  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [discoveredModelIds, setDiscoveredModelIds] = useState<readonly string[]>([]);
+  const [selectedDiscoveredIds, setSelectedDiscoveredIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [importingModels, setImportingModels] = useState(false);
+
+  const existingModelIds = useMemo(
+    () => new Set(models.map((model) => model.modelId)),
+    [models],
+  );
+
+  const handleDiscoverModels = useCallback(async () => {
+    if (discovering) return;
+    setDiscovering(true);
+    setDiscoverError(null);
+    try {
+      const result = await providerSettingsService.discoverProviderModels({ providerId });
+      if (result.status === "ok") {
+        setDiscoveredModelIds(result.modelIds);
+        // 默认只勾选本地还没有的：点这个按钮的意图就是补齐缺失项，
+        // 已经配好的模型再走一次添加会覆盖掉用户手改过的元数据。
+        setSelectedDiscoveredIds(
+          new Set(result.modelIds.filter((id) => !existingModelIds.has(id))),
+        );
+      } else {
+        setDiscoveredModelIds([]);
+        setSelectedDiscoveredIds(new Set());
+        setDiscoverError(result.status === "unsupported" ? result.reason : result.message);
+      }
+      setDiscoverOpen(true);
+    } catch (error) {
+      setDiscoveredModelIds([]);
+      setSelectedDiscoveredIds(new Set());
+      setDiscoverError(error instanceof Error ? error.message : String(error));
+      setDiscoverOpen(true);
+    } finally {
+      setDiscovering(false);
+    }
+  }, [discovering, existingModelIds, providerId, providerSettingsService]);
+
+  const toggleDiscoveredId = useCallback((modelId: string) => {
+    setSelectedDiscoveredIds((current) => {
+      const next = new Set(current);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      return next;
+    });
+  }, []);
+
+  const handleImportDiscoveredModels = useCallback(async () => {
+    if (importingModels) return;
+    setImportingModels(true);
+    try {
+      // 逐个添加而不是批量：addPersonalModel 每次返回权威 View 并提交，
+      // 中途失败时已完成的部分已经落库，用户能看到实际结果而不是整体回滚的假象。
+      for (const modelId of discoveredModelIds) {
+        if (!selectedDiscoveredIds.has(modelId)) continue;
+        await onAddModel({ ...createEmptyModel(), modelId });
+      }
+      setDiscoverOpen(false);
+      setDiscoveredModelIds([]);
+      setSelectedDiscoveredIds(new Set());
+    } finally {
+      setImportingModels(false);
+    }
+  }, [discoveredModelIds, importingModels, onAddModel, selectedDiscoveredIds]);
+
   return (
     <div>
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <span className="text-ui-base text-foreground-subtle">
           {intl.formatMessage({ id: "settings.modelProvider.models" })}
         </span>
-        <Button
-          type="button"
-          variant="secondary"
-          size="default"
-          className="rounded-lg"
-          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
-          onClick={openAddDialog}
-        >
-          <Plus data-icon="inline-start" aria-hidden="true" />
-          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            className="rounded-lg"
+            data-testid={TID_MODEL_PROVIDER_FETCH_MODELS_BUTTON}
+            disabled={discovering}
+            onClick={() => void handleDiscoverModels()}
+          >
+            <Download data-icon="inline-start" aria-hidden="true" />
+            {discovering
+              ? intl.formatMessage({ id: "settings.modelProvider.fetchModels.loading" })
+              : intl.formatMessage({ id: "settings.modelProvider.fetchModels" })}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="default"
+            className="rounded-lg"
+            data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+            onClick={openAddDialog}
+          >
+            <Plus data-icon="inline-start" aria-hidden="true" />
+            {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+          </Button>
+        </div>
       </div>
+      <Dialog
+        open={discoverOpen}
+        onOpenChange={(open) => {
+          if (!open) setDiscoverOpen(false);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {intl.formatMessage({ id: "settings.modelProvider.fetchModels.title" })}
+            </DialogTitle>
+          </DialogHeader>
+          {discoverError ? (
+            <p className="text-ui-base text-warning">{discoverError}</p>
+          ) : discoveredModelIds.length === 0 ? (
+            <p className="text-ui-base text-foreground-subtle">
+              {intl.formatMessage({ id: "settings.modelProvider.fetchModels.empty" })}
+            </p>
+          ) : (
+            <>
+              <p className="text-ui-sm text-foreground-subtle">
+                {intl.formatMessage(
+                  { id: "settings.modelProvider.fetchModels.count" },
+                  { count: discoveredModelIds.length },
+                )}
+              </p>
+              <div className="max-h-72 overflow-y-auto rounded-lg border border-input-border bg-input">
+                {discoveredModelIds.map((modelId) => {
+                  const alreadyConfigured = existingModelIds.has(modelId);
+                  return (
+                    <button
+                      type="button"
+                      key={modelId}
+                      onClick={() => toggleDiscoveredId(modelId)}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui-base hover:bg-hover"
+                    >
+                      {/* 勾选框只作视觉指示：整行是唯一的点击目标，避免 label 转发造成双次切换。 */}
+                      <Checkbox
+                        checked={selectedDiscoveredIds.has(modelId)}
+                        tabIndex={-1}
+                        className="pointer-events-none"
+                      />
+                      <span className="min-w-0 flex-1 truncate font-mono">{modelId}</span>
+                      {alreadyConfigured ? (
+                        <span className="shrink-0 text-ui-xs text-foreground-subtlest">
+                          {intl.formatMessage({
+                            id: "settings.modelProvider.fetchModels.alreadyConfigured",
+                          })}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              size="default"
+              className="rounded-lg"
+              onClick={() => setDiscoverOpen(false)}
+            >
+              {intl.formatMessage({ id: "common.cancel" })}
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              size="default"
+              className="rounded-lg"
+              disabled={
+                importingModels ||
+                discoverError !== null ||
+                selectedDiscoveredIds.size === 0
+              }
+              onClick={() => void handleImportDiscoveredModels()}
+            >
+              {intl.formatMessage(
+                { id: "settings.modelProvider.fetchModels.import" },
+                { count: selectedDiscoveredIds.size },
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {models.length > 0 ? (
         <div className="overflow-hidden rounded-lg border border-input-border bg-input">
           <SortableProviderModelList

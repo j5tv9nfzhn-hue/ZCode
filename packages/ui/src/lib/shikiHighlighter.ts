@@ -2,6 +2,7 @@ import type { BundledLanguage, BundledTheme, HighlighterGeneric, ThemedToken } f
 import { bundledLanguages, bundledLanguagesInfo, createHighlighter } from "shiki";
 import { logger } from "@/logger.js";
 import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
+import { createBoundedStateMap } from "@/lib/boundedStateMap.js";
 
 export interface TokenizedCode {
   tokens: ThemedToken[][];
@@ -26,13 +27,120 @@ const PLAIN_TEXT_CODE_LANGUAGES = new Set([
   "output",
 ]);
 
+/**
+ * 真正启用语法高亮的语言白名单（Shiki 的 canonical id）。
+ *
+ * 为什么不直接放开 `bundledLanguageIds`（约 200 个语言）：`createHighlighter` 是
+ * **每个语言一个实例**，首次使用还要把 TextMate 语法编译成正则。这两件事都发生
+ * 在 **renderer 主线程**上（见 highlightCode——本模块没有 Worker）。
+ * 在 2 物理核、无睿频的老机器上，一段会话里出现十来个冷门语言（nim / elixir /
+ * jinja / crystal …）就意味着十几次主线程 WASM 编译，加上十来个各自持有语法与
+ * 引擎的 Highlighter 实例常驻——这是「打开一个长会话后机器变慢」的典型来源。
+ *
+ * 白名单覆盖 Agent 实际会吐代码块的语言；名单外一律按纯文本渲染（与未知语言、
+ * log 输出的既有降级路径完全一致，不新增失败模式）。要加语言只改这一个数组。
+ */
+const HIGHLIGHTED_LANGUAGE_IDS = new Set<string>([
+  // Web
+  "javascript",
+  "jsx",
+  "typescript",
+  "tsx",
+  "html",
+  "css",
+  "scss",
+  "less",
+  "json",
+  "jsonc",
+  "yaml",
+  "xml",
+  "svg",
+  "vue",
+  "svelte",
+  // 脚本
+  "python",
+  "ruby",
+  "php",
+  "perl",
+  "lua",
+  "r",
+  "julia",
+  "bash",
+  "sh",
+  "zsh",
+  "fish",
+  "powershell",
+  "batch",
+  "vb",
+  // 编译型
+  "c",
+  "cpp",
+  "csharp",
+  "java",
+  "kotlin",
+  "scala",
+  "go",
+  "rust",
+  "zig",
+  "swift",
+  "objective-c",
+  "dart",
+  "groovy",
+  "haskell",
+  "elixir",
+  "erlang",
+  "clojure",
+  "ocaml",
+  "fsharp",
+  // 标记与数据
+  "markdown",
+  "mdx",
+  "latex",
+  "tex",
+  "rst",
+  "sql",
+  "graphql",
+  "protobuf",
+  "toml",
+  "ini",
+  "diff",
+  // 构建与配置
+  "dockerfile",
+  "makefile",
+  "cmake",
+  "nginx",
+  "terraform",
+  "hcl",
+]);
+
+/**
+ * 开发期自检：白名单是手写的 canonical id，而 Shiki 升级可能改名或删除某个语言。
+ * 一个拼错或已下线的 id 会让该语言**静默降级成纯文本**——没有报错、只有「怎么不高亮了」。
+ * 这里在开发构建下把对不上的 id 报出来，让问题在开发期就暴露。
+ * 未知语言本来就走纯文本降级，所以这段检查只影响可观测性，不影响运行时正确性。
+ */
+if (import.meta.env.DEV) {
+  const unknownIds = [...HIGHLIGHTED_LANGUAGE_IDS].filter((id) => !bundledLanguageIds.has(id));
+  if (unknownIds.length > 0) {
+    logger.warn(
+      "[ShikiHighlighter] 高亮白名单里有 Shiki 不认识的语言 id（高亮会静默降级为纯文本）：",
+      unknownIds,
+    );
+  }
+}
+
 export function shouldUseSyntaxHighlighting(language: string): boolean {
   const candidate = language.trim().toLowerCase();
   if (PLAIN_TEXT_CODE_LANGUAGES.has(candidate)) {
     return false;
   }
 
-  return bundledLanguageIds.has(candidate) || bundledLanguageAliases.has(candidate);
+  // 别名先归一到 canonical id 再查白名单：模型常写 ```bash / ```sh / ```zsh。
+  const canonical = bundledLanguageAliases.get(candidate) ?? candidate;
+  if (!bundledLanguageIds.has(canonical)) {
+    return false;
+  }
+  return HIGHLIGHTED_LANGUAGE_IDS.has(canonical);
 }
 
 function normalizeCodeLanguage(language: string): BundledLanguage {
@@ -53,17 +161,35 @@ function normalizeCodeLanguage(language: string): BundledLanguage {
   return FALLBACK_CODE_LANGUAGE;
 }
 
-const highlighterCache = new Map<
-  string,
+/**
+ * 常驻 Highlighter 实例数上限。
+ *
+ * 一个实例 = 一个语言 + 一个主题，各自持有语法与编译后的正则，且本模块跑在
+ * renderer 主线程（没有 Worker）。键空间是 `theme:language`，本身有限（白名单约 60
+ * 个语言 × 2 主题），但每条都很重，200 个语言全用一遍就是 200 个实例。
+ * 这里用近似 LRU 限制规模：淘汰后重新高亮只是多一次主线程编译，不影响正确性；
+ * 已在飞的 `createHighlighter` promise 由调用方的闭包持有，不受淘汰影响。
+ */
+const MAX_HIGHLIGHTER_CACHE_ENTRIES = 16;
+const highlighterCache = createBoundedStateMap<
   Promise<HighlighterGeneric<BundledLanguage, BundledTheme>>
->();
-const tokensCache = new Map<string, TokenizedCode>();
+>(MAX_HIGHLIGHTER_CACHE_ENTRIES);
+/**
+ * 已分词结果的缓存条数上限。
+ *
+ * cacheKey 已经是 `theme:language:length:首100字符:尾100字符` 的定长摘要（见
+ * getCodeTokensCacheKey），键本身不会膨胀；真正会随长会话单调增长的是条数，
+ * 而每条都持有整段代码的分词结果。这里用近似 LRU 限制规模：淘汰后重新高亮
+ * 只是多一次 CPU，不影响正确性。等待中的订阅者走独立的 subscribers 表，不受影响。
+ */
+const MAX_TOKENS_CACHE_ENTRIES = 512;
+const tokensCache = createBoundedStateMap<TokenizedCode>(MAX_TOKENS_CACHE_ENTRIES);
 const subscribers = new Map<string, Set<(result: TokenizedCode) => void>>();
-// 内存诊断计数器：tokensCache 目前无淘汰，是审计里
-// renderer 最可疑的增长点，先把条数落到日志里。
+// 内存诊断计数器：tokensCache 已加容量上限，条数可用于确认是否长期贴顶。
 uiMemoryDiagnosticsRegistry.register("shiki", () => ({
   tokensCache: tokensCache.size,
   highlighters: highlighterCache.size,
+  highlighterCap: MAX_HIGHLIGHTER_CACHE_ENTRIES,
 }));
 
 const getResolvedCodeTheme = (theme?: BundledTheme): BundledTheme => {

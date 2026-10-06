@@ -148,6 +148,11 @@ const enUS: Record<string, string> = {
   "chat.previewCards.openExternalFailed": "Could not open this file in the browser",
   "settings.modelProvider.connectionMode.switchToStartPlan": "Switch to Start Plan",
   "chat.composer.contextSearchHint": "Type to search plugins, files, and chats",
+  "chat.liveMetrics.tokensPerSecond": "token/s",
+  "chat.liveMetrics.turns": "{count} turn(s)",
+  "chat.liveMetrics.steps": "{count} step(s)",
+  "chat.liveMetrics.cumulativeHint":
+    "Turns and step calls are cumulative for this session; rewinding does not reduce them.",
   "chat.composer.contextShortcut": "Add context",
   "chat.composer.capabilityShortcut": "Choose capabilities",
   "chat.composer.skillShortcut": "Choose skills",
@@ -2200,6 +2205,8 @@ const enUS: Record<string, string> = {
   "settings.desktopChromiumHardwareAcceleration": "Chrome hardware acceleration",
   "settings.desktopChromiumHardwareAccelerationDescription":
     "Turn this off to work around blank windows, crashes, or rendering issues caused by some GPUs or drivers. Restart the app to take effect.",
+  "settings.desktopChromiumHardwareAccelerationLowSpecHint":
+    "This machine reports low memory or CPU, where integrated-GPU acceleration usually costs more than it saves. Turning it off is recommended. Restart the app to take effect.",
   "settings.desktopChromiumHardwareAccelerationSavedHint":
     "Chrome hardware acceleration setting saved. Restart the app to take effect.",
   "settings.receivePreviewUpdates": "Receive preview updates early",
@@ -2257,7 +2264,8 @@ const enUS: Record<string, string> = {
   "settings.modelIoFullRetentionDescription":
     "Keep complete model requests and responses without compression, size limits, or automatic deletion.",
   "settings.performanceMode": "Performance mode",
-  "settings.performanceModeDescription": "Simplify rendered output to improve performance.",
+  "settings.performanceModeDescription":
+    "Removes animation and transitions, drops code highlighting concurrency to 1, and stops generated files from opening automatically. Applies automatically on lower-spec machines.",
   "settings.taskAutoArchive": "Auto-archive old tasks",
   "settings.taskAutoArchiveDescription":
     "Periodically scan recently opened workspaces and automatically archive completed, unread-free, unpinned tasks after the retention window.",
@@ -3370,6 +3378,13 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.models": "Model list",
   "settings.modelProvider.modelsEmpty": "No models are configured. Add a model to use it in chat.",
   "settings.modelProvider.addModel": "Add model",
+  "settings.modelProvider.fetchModels": "Fetch from endpoint",
+  "settings.modelProvider.fetchModels.loading": "Fetching…",
+  "settings.modelProvider.fetchModels.title": "Models from endpoint",
+  "settings.modelProvider.fetchModels.count": "Endpoint returned {count} model(s)",
+  "settings.modelProvider.fetchModels.empty": "The endpoint returned no models.",
+  "settings.modelProvider.fetchModels.alreadyConfigured": "Configured",
+  "settings.modelProvider.fetchModels.import": "Add {count} selected model(s)",
   "settings.modelProvider.modelId": "Model ID",
   "settings.modelProvider.modelDisplayName": "Display name",
   "settings.modelProvider.modelApiFormat.anthropic": "Anthropic messages",

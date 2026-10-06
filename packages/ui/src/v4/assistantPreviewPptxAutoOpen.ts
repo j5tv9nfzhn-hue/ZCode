@@ -21,7 +21,8 @@ interface AssistantPreviewPptxAutoOpenGateInput {
   scopeKey: string;
   logEpoch?: string;
   phase?: SessionPhase;
-  completedTurn: AssistantPreviewPptxCompletedTurn | null;
+  /** 省略等价于 null：调用方可在 enabled=false 时省掉整窗扫描，闸门此时本就不会消费它。 */
+  completedTurn?: AssistantPreviewPptxCompletedTurn | null;
 }
 
 interface AssistantPreviewPptxAutoOpenGateResult {

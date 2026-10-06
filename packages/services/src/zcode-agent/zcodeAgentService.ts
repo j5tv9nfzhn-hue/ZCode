@@ -3,7 +3,9 @@ import {
   localTtftFactsSchema,
   sessionDebugSnapshotSchema,
   type LocalTtftFacts,
+  type ProcessBudget,
 } from "@zcode/shared";
+import { hostResourceBudget } from "#src/system/hostResourceBudget.js";
 /* oxlint-disable eslint(max-lines) -- ZCode Protocol transport、通知 wiring 和 app-facing session 方法必须共享同一个 client/emitter 上下文。 */
 import { randomUUID } from "node:crypto";
 import { ensureIndependentPlanSupport } from "./independentPlanSupport.js";
@@ -858,12 +860,22 @@ function createRuntimeUnavailableError(params: ZCodeAgentWorkspaceTarget): Error
   return error;
 }
 
-interface CreateZCodeAgentServiceOptions extends Omit<
-  ZCodeAgentProcessManagerOptions,
-  "idleTimeoutMs"
-> {
-  /** 仅供 MCP 状态探测进程使用，不能把空闲回收传给 chat。 */
+interface CreateZCodeAgentServiceOptions extends ZCodeAgentProcessManagerOptions {
+  /**
+   * chat lane 的空闲回收阈值。缺省取进程侧资源预算按机器分档的值；高档位预算为
+   * `undefined`，即不回收。显式传入可覆盖（测试与远端部署用）。
+   *
+   * 与下面的 `mcpStatusIdleTimeoutMs` 互不影响：MCP 状态探测 lane 只认后者，它的慢握手
+   * （mcp/list）会长时间占着串行 stdio 队列，用 chat 的阈值会把它反复回收掉。
+   */
+  idleTimeoutMs?: number;
+  /** 仅供 MCP 状态探测 lane 使用，与 chat lane 的空闲回收各自独立。 */
   mcpStatusIdleTimeoutMs?: number;
+  /**
+   * 覆盖进程侧资源预算；缺省按本进程所在机器推导（见 hostResourceBudget）。
+   * 远程 stdio 服务端会按远端机器分档，因此不需要从客户端传值过来。
+   */
+  resourceBudget?: ProcessBudget;
   accountProviderConfigSource?: ProviderSource<AccountProviderConfigSnapshot>;
   accountRequestAuthService?: IAccountRequestAuthService;
   /** Desktop Host 请求 Main 登记 Agent 已授权的精确本地视频路径。 */
@@ -1057,7 +1069,16 @@ function resolveOffPeakToolSelection(
 export function createZCodeAgentService(
   options?: CreateZCodeAgentServiceOptions,
 ): IZCodeAgentService & { disposeAllAndWait(): Promise<void> } {
-  const processManager = new ZCodeAgentProcessManager(options);
+  // chat lane 的进程数与空闲回收由**本进程所在机器**的资源预算决定（本地 Host 或远程
+  // stdio 服务端各自算自己的）。原先 chat lane 完全不回收、开过多少 workspace 就常驻
+  // 多少个完整 Node 运行时，这是长时间运行内存单调增长的直接来源。
+  const hostBudget = options?.resourceBudget ?? hostResourceBudget().processes;
+  const chatLaneIdleTimeoutMs = options?.idleTimeoutMs ?? hostBudget.agentIdleTimeoutMs;
+  const processManager = new ZCodeAgentProcessManager({
+    ...options,
+    ...(chatLaneIdleTimeoutMs !== undefined ? { idleTimeoutMs: chatLaneIdleTimeoutMs } : {}),
+    maxProcesses: options?.maxProcesses ?? hostBudget.agentProcessMax,
+  });
   // Windows indicator 与 macOS producer lifecycle client 共用已校验、去重的 sideband facts。
   const cuaOperationTurnTracker =
     options?.cuaOperationStateReporter || options?.onCuaPipSessionLifecycle

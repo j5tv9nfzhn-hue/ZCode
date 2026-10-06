@@ -30,6 +30,7 @@ import { SettingsBadge, SettingsGroupCard, SettingsRow } from "@/settings/Settin
 import { DataBaseDirControl } from "@/settings/DataBaseDirControl.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useOptionalServices } from "@/hooks/useServices.js";
+import { useResourceBudget } from "@/hooks/useResourceBudget.js";
 import { ProactiveSuggestionsSetting } from "@/settings/ProactiveSuggestionsSetting.js";
 import { normalizeInterfaceMode, type InterfaceMode } from "@/lib/interfaceMode.js";
 import {
@@ -173,6 +174,11 @@ export function GeneralSectionContent({
 }) {
   const { intl } = useZCodeIntl();
   const hasServices = Boolean(useOptionalServices());
+  // 低配机器上核显的硬件加速通常是净负担（合成走 CPU 或 SwiftShader），但设置默认是开的
+  // （validationAppSettings 的 default(true)）。这里只在「确实是低配 + 仍开着」时给出
+  // 关闭理由，不代替用户改——改这个要重启生效，代价应由知情的用户决定。
+  const lowSpecHardwareAccelerationHint =
+    useResourceBudget().tier === "low" && desktopChromiumHardwareAccelerationEnabled;
   // 部分 SSR 单测会用精简 props 直接渲染本组件，新增终端设置项后旧 helper 未必同步传值。
   // 这里把运行时缺省值兜到“继承系统 profile”，避免 undefined.trim() 把无关测试打断。
   const [localTerminalFontFamily, setLocalTerminalFontFamily] = useState(terminalFontFamily);
@@ -560,7 +566,9 @@ export function GeneralSectionContent({
                 id: "settings.desktopChromiumHardwareAcceleration",
               })}
               description={intl.formatMessage({
-                id: "settings.desktopChromiumHardwareAccelerationDescription",
+                id: lowSpecHardwareAccelerationHint
+                  ? "settings.desktopChromiumHardwareAccelerationLowSpecHint"
+                  : "settings.desktopChromiumHardwareAccelerationDescription",
               })}
               control={
                 <Switch

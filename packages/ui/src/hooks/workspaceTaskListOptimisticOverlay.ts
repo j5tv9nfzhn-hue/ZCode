@@ -64,53 +64,56 @@ export function mergeWorkspaceTaskListItemsWithOptimistic(params: {
 export function useWorkspaceTaskOptimisticOverlayByWorkspaceKey(
   workspaceTabs: WorkspaceTabState[],
 ): Map<string, WorkspaceOptimisticTaskOverlay> {
-  const workspaceScopeSignature = JSON.stringify(
-    workspaceTabs
-      .map((tab) => ({
-        workspacePath: tab.workspacePath,
-        workspaceIdentity: tab.workspaceIdentity,
-        workspaceKey: buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity),
-      }))
-      .sort((left, right) => left.workspaceKey.localeCompare(right.workspaceKey)),
+  // scope 只由 props（workspaceTabs）决定，不订阅 store；
+  // 旧实现用「stringify + JSON.parse」在每次渲染之间传值，这里直接 memo 化排序结果。
+  const workspaceScopes = useMemo<WorkspaceOptimisticScope[]>(
+    () =>
+      workspaceTabs
+        .map((tab) => ({
+          workspacePath: tab.workspacePath,
+          workspaceIdentity: tab.workspaceIdentity,
+          workspaceKey: buildTaskWorkspaceKey(tab.workspacePath, tab.workspaceIdentity),
+        }))
+        .sort((left, right) => left.workspaceKey.localeCompare(right.workspaceKey)),
+    [workspaceTabs],
   );
-  const workspaceScopes = useMemo(
-    () => JSON.parse(workspaceScopeSignature) as WorkspaceOptimisticScope[],
-    [workspaceScopeSignature],
-  );
-  const optimisticTaskListSignature = useZCodeSessionStore((state) =>
-    JSON.stringify(
-      workspaceScopes.map((scope) => {
-        const workspaceState = selectWorkspaceZCodeState(
-          state,
-          scope.workspacePath,
-          scope.workspaceIdentity,
-        );
-        return [
-          scope.workspaceKey,
-          workspaceState.activeTaskId,
-          Object.values(workspaceState.optimisticTaskListByTaskId)
-            .map((task) => {
-              const promotedDraft = workspaceState.promotedGroupedDraftTaskByTaskId[task.taskId];
-              return [
-                task.taskId,
-                task.title,
-                task.createdAt,
-                task.updatedAt,
-                task.status,
-                task.unreadAt,
-                task.provider,
-                task.model,
-                promotedDraft?.createdAt,
-                promotedDraft?.placement.type,
-                promotedDraft?.placement.type === "group" ? promotedDraft.placement.groupId : null,
-              ];
-            })
-            .sort(([leftTaskId], [rightTaskId]) =>
-              String(leftTaskId).localeCompare(String(rightTaskId)),
-            ),
-        ] as const;
-      }),
-    ),
+  const optimisticTaskListSignature = useZCodeSessionStore(
+    // 签名必须是纯字符串：下游 useMemo 以它为唯一依赖，
+    // 必须靠它把「内容未变」表达成同一个值，从而稳定住下游重建。
+    (state) =>
+      JSON.stringify(
+        workspaceScopes.map((scope) => {
+          const workspaceState = selectWorkspaceZCodeState(
+            state,
+            scope.workspacePath,
+            scope.workspaceIdentity,
+          );
+          return [
+            scope.workspaceKey,
+            workspaceState.activeTaskId,
+            Object.values(workspaceState.optimisticTaskListByTaskId)
+              .map((task) => {
+                const promotedDraft = workspaceState.promotedGroupedDraftTaskByTaskId[task.taskId];
+                return [
+                  task.taskId,
+                  task.title,
+                  task.createdAt,
+                  task.updatedAt,
+                  task.status,
+                  task.unreadAt,
+                  task.provider,
+                  task.model,
+                  promotedDraft?.createdAt,
+                  promotedDraft?.placement.type,
+                  promotedDraft?.placement.type === "group" ? promotedDraft.placement.groupId : null,
+                ];
+              })
+              .sort(([leftTaskId], [rightTaskId]) =>
+                String(leftTaskId).localeCompare(String(rightTaskId)),
+              ),
+          ] as const;
+        }),
+      ),
   );
 
   return useMemo(() => {

@@ -55,13 +55,21 @@ import {
 } from "@/ToolCallBlocks/renderers/workflow-draft-row.js";
 import { ToolSnapshotFieldNotice } from "@/ToolCallBlocks/ToolSnapshotFieldNotice.js";
 import { ToolLayout } from "../ToolLayout.js";
+import { createBoundedStateMap } from "@/lib/boundedStateMap.js";
+import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
 import type { ToolCallBlockRenderContext } from "../shared.js";
 
 /** 没有 display 时交给草稿槽位的空诊断：模块级常量，免得每次渲染一个新数组打穿记忆。 */
 const NO_DIAGNOSTICS: readonly never[] = [];
 
 /** 折叠状态按 toolId 记忆（与 ToolLayout 的 toolLayoutOpenState 同一模式）；默认展开。 */
-const workflowCardOpenState = new Map<string, boolean>();
+const MAX_WORKFLOW_CARD_OPEN_STATE_ENTRIES = 1_024;
+// 与 ToolLayout 同理：键是渲染实例标识，会随长会话单调增长；
+// 被淘汰后回落默认展开，与「用户没在这条上点过」等价。
+const workflowCardOpenState = createBoundedStateMap<boolean>(MAX_WORKFLOW_CARD_OPEN_STATE_ENTRIES);
+uiMemoryDiagnosticsRegistry.register("workflowCard", () => ({
+  openState: workflowCardOpenState.size,
+}));
 
 /**
  * 聊天区的 CreateWorkflow / AmendWorkflow 工具卡。

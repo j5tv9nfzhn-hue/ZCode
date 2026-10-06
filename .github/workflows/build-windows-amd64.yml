@@ -1,0 +1,88 @@
+name: Build Windows amd64
+
+# 唯一的打包流水线。
+#
+# ── 强制约束：只产出 Windows x64（amd64），产物仅本人使用 ──
+# 这条约束分四层落地，任意一层被绕过都还会被下一层拦住：
+#
+#   1. runs-on 硬编码 windows-2022，且**不用 matrix**（matrix 是多出平台的最短路径）。
+#   2. job 级 env 固定 ZCODE_TARGET_OS=win32 / ZCODE_TARGET_ARCH=x64，
+#      setup-zcode 的 preflight 同时校验宿主平台与声明目标。
+#   3. 调用打包脚本时显式传 --os win --arch x64。必须显式传：
+#      packages/desktop/scripts/bundle.mjs 的默认值是 **mac / arm64**（见其 printHelp），
+#      漏传会静默产出 mac 包。
+#   4. 打包后对 dist 做产物白名单校验（scripts/ci/assert-build-target.mjs）。
+#      这一层是真正的牙齿：即便有人改了 workflow、给 electron-builder 配置加了别的 target，
+#      非 Windows 产物也会在上传前直接让 job 失败。
+#
+# 「仅本人使用」对应两个决定：
+#   - 不做代码签名。产物未签名，Windows SmartScreen 会提示，但自用无影响，
+#     同时避免 CI 去搜集证书、让输出带上机器相关的不确定性。
+#   - 不发布到 GitHub Release，只上传为 workflow artifact。发布链路需要凭据与
+#     长期存储，对单人使用是纯负担。
+name: Build Windows amd64
+
+on:
+  # 手动触发：日常自查，不占用每次 push 的额度。
+  workflow_dispatch:
+  # 打 tag 时自动出包，作为「这个版本可以装了」的固定节点。
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: build-windows-amd64-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-2022
+    # Electron 打包要下载运行时与 builder 辅助二进制、准备 node-pty 预编译产物、
+    # 编译整个 monorepo，再重写一次 app.asar。60 分钟是保守但够用的上限。
+    timeout-minutes: 60
+    env:
+      ZCODE_TARGET_OS: win32
+      ZCODE_TARGET_ARCH: x64
+      # 不做签名：自用产物。关闭自动发现证书，避免 runner 镜像上任何证书被意外使用。
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # turbo 在 CI 上需要关闭遥测与交互输出，否则日志会被污染。
+      TURBO_TELEMETRY_DISABLED: "1"
+      TURBO_UI: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-zcode
+
+      # 打包前先过一遍静态检查：类型或架构检查不过时没必要浪费 20 分钟下载与编译。
+      # 与 CI workflow 重复执行换取「单独触发打包也能拿到干净产物」，这个重复是值得的。
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Architecture check (changed modules)
+        run: pnpm architecture:check --changed
+
+      # ── 打包 ──
+      # --os win --arch x64 必须显式给：bundle.mjs 的默认目标是 mac/arm64。
+      # 本 workflow 不创建 GitHub Release，产物只作为 workflow artifact 上传。
+      - name: Bundle Windows x64 installer
+        run: pnpm bundle:desktop -- --os win --arch x64
+
+      # ── 强制约束第四层：产物白名单 ──
+      # 在 upload-artifact 之前：不合格产物不应该占用 artifact 存储。
+      - name: Assert artifacts are Windows x64 only
+        run: node scripts/ci/assert-build-target.mjs --artifacts packages/desktop/dist
+
+      # compression-level 0：.exe 安装器本身已经是压缩包（NSIS），
+      # 再过一层 gzip 几乎不省体积，却要白花几分钟 CPU 和上传时间。
+      # retention-days 30：自用不需要长期留档，避免占满仓库 10GB 的 artifact 配额。
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: zcode-win-x64-nsis
+          path: packages/desktop/dist/*.exe
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

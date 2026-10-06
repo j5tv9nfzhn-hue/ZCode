@@ -1,139 +1,28 @@
-import type { TuiReadClipboardImage, TuiWriteClipboardText } from "@zcode/tui";
-import type { UiLocale } from "@zcode/i18n";
 import type { Logger } from "@zcode/contracts";
-import type {
-  createManagedCdpBrowserRuntime,
-  ManagedCdpBrowserRuntimeOptions,
-} from "@zcode/adapters/browser";
-import type {
-  createModelAdapter,
-  createZCodeApp,
-  CreateModelAdapterOptions,
-  configureCodingPlanApiKey,
-  ConfigureCodingPlanApiKeyOptions,
-  inspectZCodeSkill,
-  inspectWorkspaceHookTrust,
-  grantWorkspaceHookTrust,
-  revokeWorkspaceHookTrustCli,
-  inspectZCodeCustomCommand,
-  InspectZCodeCustomCommandOptions,
-  InspectZCodeSkillOptions,
-  loginZCodeCli,
-  loginBigmodelCodingPlan,
-  LoginBigmodelCodingPlanOptions,
-  LoginZCodeCliOptions,
-  listZCodeCustomCommands,
-  ListZCodeCustomCommandsOptions,
-  loadZCodeCustomCommand,
-  listZCodeSessions,
-  listZCodeSkills,
-  ListZCodeSessionsOptions,
-  ListZCodeSkillsOptions,
-  logoutZCodeCli,
-  LogoutZCodeCliOptions,
-  resolveLatestSession,
-  ResolveLatestSessionOptions,
-  RunZCodeProtocolAgentOptions,
-  prepareZCodeTelemetryEnv,
-  startProcessProviderRegistryRuntime,
-  shutdownZCodeTelemetry,
-  ZCodeAppOptions,
-} from "@zcode/bootstrap";
+import type { RunZCodeProtocolAgentOptions } from "@zcode/bootstrap";
 import type { CliEnv, DotenvLoadResult, LoadCliDotenvOptions } from "./env.js";
-import type { PluginsCommandOverrides } from "./plugins-command.js";
-import type { CliShutdownProcess } from "./shutdown.js";
-import type { resolveWorkspaceGitBranch } from "./tui-workspace-git.js";
 
 export type BootstrapModule = typeof import("@zcode/bootstrap");
 
-export interface RunDependencies extends PluginsCommandOverrides {
+/**
+ * 进程入口的依赖注入面。
+ *
+ * TUI 与面向人的 CLI 子命令（login / plugins / skills / commands / --prompt / --target）
+ * 已随 CLI 产品移除；本进程现在只承担桌面端与远程资产需要的运行时角色：
+ * ZCode Protocol 服务端（app-server / agent-server）、插件宿主（plugin-host）、
+ * 动态工作流子进程（dwf-child）、内嵌搜索与 hooks 信任管理。
+ * 因此这里只保留上述角色真正会读到的注入点，不再有交互层专属依赖。
+ */
+export interface RunDependencies {
+  /** app-server / agent-server 的进程生命周期闸门；由 main 在协议模式下注入。 */
   protocolLifecycle?: RunZCodeProtocolAgentOptions["lifecycle"];
+  /** 协议模式的输入流；未注入时回落到 ctx.stdin。 */
   protocolInput?: NodeJS.ReadableStream;
-  createManagedCdpBrowserRuntime?: (
-    options?: ManagedCdpBrowserRuntimeOptions,
-  ) => ReturnType<typeof createManagedCdpBrowserRuntime>;
-  createModelAdapter?: (
-    options?: CreateModelAdapterOptions,
-  ) => ReturnType<typeof createModelAdapter>;
-  createZCodeApp?: (
-    options?: ZCodeAppOptions,
-  ) => Awaited<ReturnType<typeof createZCodeApp>> | ReturnType<typeof createZCodeApp>;
-  /**
-   * Session-event shaper for --output-format stream-json. Defaults to the
-   * bootstrap module's, which is also what the protocol server uses; injectable
-   * so a caller that supplies its own `createZCodeApp` (tests, embedders) can
-   * still stream, since the bootstrap module is not loaded on that path.
-   */
-  mapSessionEvent?: BootstrapModule["mapSessionEvent"];
+  /** 协议 Agent 的实际启动实现；未注入时经 bootstrap-loader 懒加载。 */
+  runZCodeProtocolAgent?: (options: RunZCodeProtocolAgentOptions) => Promise<void>;
   cwd?: () => string;
   env?: CliEnv;
-  inspectSkill?: (options: InspectZCodeSkillOptions) => ReturnType<typeof inspectZCodeSkill>;
-  inspectWorkspaceHookTrust?: typeof inspectWorkspaceHookTrust;
-  grantWorkspaceHookTrust?: typeof grantWorkspaceHookTrust;
-  revokeWorkspaceHookTrustCli?: typeof revokeWorkspaceHookTrustCli;
-  inspectCustomCommand?: (
-    options: InspectZCodeCustomCommandOptions,
-  ) => ReturnType<typeof inspectZCodeCustomCommand>;
-  loginZCodeCli?: (options?: LoginZCodeCliOptions) => ReturnType<typeof loginZCodeCli>;
-  loginBigmodelCodingPlan?: (
-    options?: LoginBigmodelCodingPlanOptions,
-  ) => ReturnType<typeof loginBigmodelCodingPlan>;
-  configureCodingPlanApiKey?: (
-    options: ConfigureCodingPlanApiKeyOptions,
-  ) => ReturnType<typeof configureCodingPlanApiKey>;
   loadDotenv?: (options?: LoadCliDotenvOptions) => DotenvLoadResult;
-  prepareZCodeTelemetryEnv?: typeof prepareZCodeTelemetryEnv;
-  projectConfigPath?: string;
-  listSessions?: (options: ListZCodeSessionsOptions) => ReturnType<typeof listZCodeSessions>;
-  listCustomCommands?: (
-    options: ListZCodeCustomCommandsOptions,
-  ) => ReturnType<typeof listZCodeCustomCommands>;
-  loadCustomCommand?: (
-    options: InspectZCodeCustomCommandOptions,
-  ) => ReturnType<typeof loadZCodeCustomCommand>;
-  // headless slash 路由要和 app facade 的保留名 gate 用同一个判据；默认取 bootstrap 的，
-  // 注入点只为让单测不必拉起整个 bootstrap 模块。见 prompt-command.ts。
-  isReservedSlashCommandName?: BootstrapModule["isReservedZCodeSlashCommandName"];
-  listSkills?: (options: ListZCodeSkillsOptions) => ReturnType<typeof listZCodeSkills>;
   logger?: Logger;
-  readClipboardImage?: TuiReadClipboardImage;
-  writeClipboardText?: TuiWriteClipboardText;
-  resolveLatestSession?: (
-    options: ResolveLatestSessionOptions,
-  ) => ReturnType<typeof resolveLatestSession>;
-  resolveWorkspaceGitBranch?: typeof resolveWorkspaceGitBranch;
-  logoutZCodeCli?: (options?: LogoutZCodeCliOptions) => ReturnType<typeof logoutZCodeCli>;
-  runZCodeProtocolAgent?: (options?: RunZCodeProtocolAgentOptions) => Promise<void>;
-  runTui?: typeof import("@zcode/tui").runTui;
-  skipUserConfig?: boolean;
   userConfigPath?: string;
-  exitProcess?: (code: number) => void;
-  shutdownCleanupTimeoutMs?: number;
-  shutdownProcess?: CliShutdownProcess;
-  startProcessProviderRegistryRuntime?: typeof startProcessProviderRegistryRuntime;
-  shutdownZCodeTelemetry?: typeof shutdownZCodeTelemetry;
-}
-
-export type CliPermissionMode = "build" | "plan" | "edit" | "yolo";
-export type CliRuntimeMode = CliPermissionMode | "auto";
-
-export interface CliModeState {
-  current?: CliRuntimeMode;
-  override?: CliPermissionMode;
-}
-
-export interface CliTargetRequest {
-  objective: string;
-  replaceExisting: boolean;
-}
-
-export type ModeCapableApp = Awaited<ReturnType<typeof createZCodeApp>> & {
-  getMode?: () => CliRuntimeMode;
-  setLocale?: (locale: UiLocale) => Promise<{ locale: "en-US" | "zh-CN" }>;
-  setMode?: (mode: CliRuntimeMode) => Promise<{ mode: CliRuntimeMode }>;
-};
-
-export interface CliResumeRequest {
-  continueSession: boolean;
-  resumeSessionId?: string;
 }

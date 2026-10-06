@@ -29,6 +29,7 @@ import {
 import { isEffectiveDevelopmentNodeEnv } from "#src/runtime-tools/nodeEnv.js";
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
 import { ZCodeProtocolClient } from "./zcodeProtocolClient.js";
+import { selectLruReclaimWorkspaceKeys } from "./zcodeAgentProcessCap.js";
 import { ZCodeStdioTransport } from "./zcodeStdioTransport.js";
 import { readZCodeStdioTapDevState } from "./zcodeStdioTapDevConfig.js";
 import type { ZCodeAgentPresentationSurface } from "./zcodeAgentPresentationSurface.js";
@@ -71,10 +72,22 @@ export interface ZCodeAgentProcessManagerOptions {
   lane?: string;
   /**
    * 空闲回收阈值：连接上没有请求在飞持续超过该时长，就主动回收整棵进程树，
-   * 下次 getClient 透明重新拉起。只给 mcp-status 这类“按需探测、进程内挂着 MCP 子进程”
-   * 的控制面 lane 使用；chat / plugin 缺省不回收。
+   * 下次 getClient 透明重新拉起。原先只给 mcp-status 这类“按需探测、进程内挂着 MCP
+   * 子进程”的控制面 lane 使用；chat lane 现在也开启，阈值由进程侧资源预算按机器分档
+   * 决定（见 hostResourceBudget）。不设则不回收。
    */
   idleTimeoutMs?: number;
+  /**
+   * 本进程池内最多常驻的 agent 进程数。达到上限时，spawn 之前先回收最久未使用的
+   * **空闲**进程腾名额；候选不够也照常 spawn——这是安全阀，拒绝启动会让「多开几个
+   * workspace」直接不可用。不设则不限。
+   */
+  maxProcesses?: number;
+  /**
+   * 进程被 LRU 上限回收前至少要空闲的时长。防止刚用过的 workspace 被立刻回收，
+   * 那种冷恢复要重放 durable session log，是最贵的一种。
+   */
+  reclaimMinIdleMs?: number;
   /**
    * 仅当默认进程 cwd 等于目标 workspace 且该目录不可用时使用。
    * 业务 workspacePath/workspaceKey 不随 cwd 兜底改变。
@@ -112,6 +125,8 @@ interface ManagedZCodeAgentProcess {
   exited: boolean;
   firstCleanupReason?: AgentProcessCleanupReason;
   idleTimer?: ReturnType<typeof setTimeout>;
+  /** 最近一次被复用的时间戳，供上限 LRU 回收排序；不参与任何协议语义。 */
+  lastActivityAt: number;
   readyAt?: number;
   readyReported: boolean;
   runtimeIdentity: ZCodeAgentRuntimeIdentity;
@@ -574,6 +589,8 @@ export class ZCodeAgentProcessManager {
   private readonly spawnFallbackCwd: string | undefined;
   private readonly lane: string | undefined;
   private readonly idleTimeoutMs: number | undefined;
+  private readonly maxProcesses: number | undefined;
+  private readonly reclaimMinIdleMs: number;
   private readonly runtimeRestartedEmitter = new Emitter<ZCodeAgentRuntimeRestartedEvent>();
   private readonly runtimeLifecycleEmitter = new Emitter<ZCodeAgentRuntimeLifecycleEvent>();
   private disposeAllInFlight: Promise<void> | undefined;
@@ -595,6 +612,14 @@ export class ZCodeAgentProcessManager {
     this.lane = options?.lane?.trim() || undefined;
     this.idleTimeoutMs =
       options?.idleTimeoutMs && options.idleTimeoutMs > 0 ? options.idleTimeoutMs : undefined;
+    this.maxProcesses =
+      options?.maxProcesses && options.maxProcesses > 0 ? Math.floor(options.maxProcesses) : undefined;
+    // 默认取空闲回收阈值的一半：一条已经在倒计时的空闲计时器，说明它至少空闲了这么久。
+    this.reclaimMinIdleMs = Math.max(
+      0,
+      options?.reclaimMinIdleMs ??
+        (this.idleTimeoutMs !== undefined ? Math.floor(this.idleTimeoutMs / 2) : 0),
+    );
   }
 
   private reportProcessLifecycle(
@@ -620,6 +645,86 @@ export class ZCodeAgentProcessManager {
     }
   }
 
+  private touchManaged(managed: ManagedZCodeAgentProcess): void {
+    managed.lastActivityAt = Date.now();
+  }
+
+  /**
+   * 上限回收：spawn 之前先腾名额。
+   *
+   * 口径（与 selectLruReclaimWorkspaceKeys 一致）：只回收已 spawn、未退出、无在飞请求、
+   * 未在等存储启动且空闲足够久的进程，按最久未使用排序。
+   *
+   * 候选不够时**照常 spawn**并记一条 warn：这是安全阀而不是配额，拒绝启动会让
+   * 「同时开 N 个 workspace」变成不可用；宁可让池子短暂超限，也不要挡住用户。
+   */
+  private enforceProcessCap(workspaceKey: string): void {
+    const maxProcesses = this.maxProcesses;
+    if (!maxProcesses || this.disposed) {
+      return;
+    }
+    const now = Date.now();
+    const liveEntries = [...this.processesByWorkspaceKey.entries()].filter(
+      ([, managed]) => managed.spawned && !managed.exited && !managed.child.killed,
+    );
+    // +1 是本次即将 spawn 的进程：它还没进池，但一样要占一份资源。
+    const reclaimCount = liveEntries.length + 1 - maxProcesses;
+    if (reclaimCount <= 0) {
+      return;
+    }
+    const reclaimKeys = selectLruReclaimWorkspaceKeys({
+      candidates: liveEntries.map(([key, managed]) => ({
+        workspaceKey: key,
+        lastActivityAt: managed.lastActivityAt,
+        // 空闲 = 没有在飞请求 **且** 没在等存储就绪。
+        // 这里用 isWaiting 而不是 phase === "ready"：不支持存储启动的自定义 Agent 命令
+        // （requireStorageStartup=false）永远不会上报状态，snapshot 恒为 undefined，
+        // 按 phase 判会让这类进程永远不可回收，上限形同虚设还每次都记 warn。
+        idle:
+          managed.client.pendingOperationRequestCount === 0 &&
+          !managed.client.storageStartup.isWaiting,
+      })),
+      excludeWorkspaceKey: workspaceKey,
+      reclaimCount,
+      now,
+      minIdleMs: this.reclaimMinIdleMs,
+    });
+    log("ZCode agent process cap reached; reclaiming idle processes", {
+      workspaceKey,
+      maxProcesses,
+      liveCount: liveEntries.length,
+      requested: reclaimCount,
+      reclaimed: reclaimKeys.length,
+      reclaimMinIdleMs: this.reclaimMinIdleMs,
+      reclaimKeys,
+    });
+    for (const key of reclaimKeys) {
+      const managed = this.processesByWorkspaceKey.get(key);
+      // 选择与删除之间可能被空闲计时器抢先回收同一实例，这里必须确认它仍在池中。
+      if (!managed) {
+        continue;
+      }
+      this.clearIdleTimer(managed);
+      this.processesByWorkspaceKey.delete(key);
+      this.reportRuntimeUnavailable(managed);
+      void this.cleanupManagedProcessWithRetry(
+        managed,
+        "idle-timeout",
+        "idle-timeout-retry",
+        "process cap",
+      ).catch(() => undefined);
+    }
+    if (reclaimKeys.length < reclaimCount) {
+      warnLog("ZCode agent process cap could not be satisfied; spawning above cap", {
+        workspaceKey,
+        maxProcesses,
+        liveCount: liveEntries.length,
+        requested: reclaimCount,
+        reclaimed: reclaimKeys.length,
+      });
+    }
+  }
+
   /**
    * 空闲回收：每次在飞请求归零就重置计时；到点时若仍无请求在飞且该进程仍是当前活跃实例，
    * 主动回收整棵进程树（含挂在其下的 MCP 子进程）。归因为 expected/idle-timeout，
@@ -629,6 +734,8 @@ export class ZCodeAgentProcessManager {
     if (!this.idleTimeoutMs || this.disposed || managed.exited) {
       return;
     }
+    // 走到这里说明刚有请求归零，即刚刚被用过；上限回收据此判断「久未使用」。
+    this.touchManaged(managed);
     this.clearIdleTimer(managed);
     const timer = setTimeout(() => {
       delete managed.idleTimer;
@@ -839,6 +946,8 @@ export class ZCodeAgentProcessManager {
     const workspaceKey = resolveWorkspaceKey(params);
     const existing = this.processesByWorkspaceKey.get(workspaceKey);
     if (existing && !existing.child.killed) {
+      // 复用即活动：上限回收只挑久未使用的进程，不该把用户正在用的那个挑走。
+      this.touchManaged(existing);
       return existing.client;
     }
 
@@ -1016,6 +1125,9 @@ export class ZCodeAgentProcessManager {
       spawnPreflight,
     });
     const spawnRequestedAt = Date.now();
+    // 放在最后一次 admission / 代际复查之后、spawn 之前：这是唯一「确定要起这个进程」
+    // 的时刻，也是回收名额最不会误伤的地方（此时本 workspace 的代际已稳定）。
+    this.enforceProcessCap(workspaceKey);
     const child = spawn(effectiveCommand.command, spawnPreflight.args, {
       cwd: spawnPreflight.cwd,
       // agent 可能再派生实际 runtime/MCP 子进程。POSIX 下让 wrapper 进入独立进程组，
@@ -1103,6 +1215,7 @@ export class ZCodeAgentProcessManager {
       child,
       client,
       exited: false,
+      lastActivityAt: startedAt,
       readyReported: false,
       runtimeIdentity,
       runtimeInstanceId,
@@ -1117,11 +1230,11 @@ export class ZCodeAgentProcessManager {
     this.ownedProcesses.add(managed);
     const publishStorage = () => {
       if (this.processesByWorkspaceKey.get(workspaceKey) !== managed) return;
+      // 用 !isWaiting 而不是 snapshot?.phase === "ready"：不支持存储启动的自定义 Agent
+      // 命令（requireStorageStartup=false）永远不会上报状态，snapshot 恒为 undefined，
+      // 按 phase 判会让这类进程永远排不上空闲回收——而 chat lane 现在也开启了回收。
       if (client.storageStartup.isWaiting) this.clearIdleTimer(managed);
-      else if (
-        client.storageStartup.snapshot?.phase === "ready" &&
-        client.pendingOperationRequestCount === 0
-      ) {
+      else if (client.pendingOperationRequestCount === 0) {
         this.scheduleIdleReclaim(workspaceKey, managed);
       }
       this.storageStartupEmitter.fire({

@@ -25,6 +25,7 @@ export { useWatchedReaddir } from "./useFileWatcherService.js";
 
 // 系统服务
 export { useSystemInfo, useIntranetProbe } from "./useSystemService.js";
+export { useResourceBudget } from "./useResourceBudget.js";
 export { useWorkspaceHomePath } from "./useWorkspaceHomePath.js";
 
 // 终端服务

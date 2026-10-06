@@ -410,6 +410,15 @@ type TurnModelBaseline =
 
 export class ProductProjection {
   private snapshot: ConversationSnapshot;
+  /**
+   * 会话累计计数器（轮数 / 工具调用步数）。
+   *
+   * 维护口径与 `turnHeaderRowIdByTurnId` / `toolRowIdByCallId` 同源：在 delta 提交前
+   * 按 `row.appended` 的行类型递增，随 `usage.counters` 一起下发。
+   * 刻意不在 rewind（row.removed）时回退：这是「本会话发生过多少工作」的累计口径，
+   * 且 row.removed 只给 fromRowId、无法还原被删行类型，回退会引入猜测。
+   */
+  private counters: { turns: number; steps: number } = { turns: 0, steps: 0 };
   // reducer 内部的 rowId 查找必须与 rows.window 同步；冷恢复过去每次 find 都扫描全表，
   // tool/turn 终态越多退化越明显。普通归约增量维护，rewind 才重建。
   private rowIndexById = new Map<number, number>();
@@ -674,6 +683,9 @@ export class ProductProjection {
               }
             : null,
           cumulative,
+          // 种子只补 token 水位。usage 是整键重建，必须把已建立的计数原样带回，
+          // 否则这里会把「本会话发生过多少工作」静默退回未知。
+          ...(this.snapshot.usage.counters ? { counters: this.counters } : {}),
         },
       };
       return;
@@ -696,6 +708,8 @@ export class ProductProjection {
             ? null
             : { ...seededContextWindow, maxTokens: seededContextWindow.maxTokens },
         cumulative,
+        // 同上：种子不带计数，也不得抹掉已经建立的计数。
+        ...(this.snapshot.usage.counters ? { counters: this.counters } : {}),
       },
     };
   }
@@ -1030,19 +1044,92 @@ export class ProductProjection {
       ? [...reducedWithSubagents, ...this.materializeCommandRowActions(reducedWithSubagents)]
       : reducedWithSubagents;
     const finalDeltas = this.attachRevision(clearSettledOutputPreviews(deltas));
+    // 计数必须在把 deltas 应用到 snapshot 之前并入，才能和它们同一事务提交。
+    const committedDeltas = this.applyCountersIntoDeltas(finalDeltas);
     if (this.hydrationAccumulator) {
-      applyConversationDeltasMutable(this.hydrationAccumulator, finalDeltas);
+      applyConversationDeltasMutable(this.hydrationAccumulator, committedDeltas);
       this.snapshot.seq = event.sequenceNumber;
     } else {
       const previousRowsLength = this.snapshot.rows.window.length;
       this.snapshot = {
-        ...applyConversationDeltas(this.snapshot, finalDeltas),
+        ...applyConversationDeltas(this.snapshot, committedDeltas),
         seq: event.sequenceNumber,
       };
-      this.updateRowIndexAfterImmutableApply(previousRowsLength, finalDeltas);
+      this.updateRowIndexAfterImmutableApply(previousRowsLength, committedDeltas);
     }
-    this.updateToolIndexesAfterDeltas(finalDeltas);
-    return finalDeltas;
+    this.updateToolIndexesAfterDeltas(committedDeltas);
+    return committedDeltas;
+  }
+
+  /**
+   * 把会话累计计数（轮数 / 工具调用步数）并入本轮 delta 序列的 `usage` 键。
+   *
+   * 为什么必须在**提交收口处**做，而不是让各 reducer 自己带：
+   * `state.updated` 是键级整体替换，而投影里有多处 reducer（ModelComplete 的上下文/累计
+   * token 水位、transcript hydration 的回填等）都按 `{ contextWindow, cumulative }`
+   * 整键重建 `usage`。任何一处漏带 `counters`，客户端就会在这次 apply 后把计数退回
+   * 「未知」。这里统一收口，reducer 以后再新增/改动也不会漏。
+   *
+   * 归约口径：
+   * - 只认 `row.appended`：`row.upserted` 是对已存在行的更新，重复计数会把同一轮/同一次
+   *   工具调用算成多次。
+   * - **不在 `row.removed`（rewind）时回退**：`row.removed` 只给 `fromRowId`，拿不到被删行的
+   *   类型分布，回退只能靠猜测。计数因此是「本会话发生过多少工作」的累计量，rewind 后不减；
+   *   UI 以此措辞呈现（见 ConversationLiveMetrics 的 title 说明），不冒充当前对话长度。
+   *
+   * 返回值要么是修复后的新序列，要么是入参本身（不需要任何改动时零分配）。
+   */
+  private applyCountersIntoDeltas(deltas: readonly ConversationDelta[]): ConversationDelta[] {
+    let turns = 0;
+    let steps = 0;
+    for (const delta of deltas) {
+      if (delta.op !== "row.appended") continue;
+      if (delta.row.kind === "turnHeader") turns += 1;
+      else if (delta.row.kind === "toolCall") steps += 1;
+    }
+    const countersChanged = turns > 0 || steps > 0;
+    if (countersChanged) {
+      this.counters = { turns: this.counters.turns + turns, steps: this.counters.steps + steps };
+    }
+    const counters = this.counters;
+    // 计数还没建立过（本投影尚无任何轮/步）且本轮也没有新增：不制造 0 值，
+    // 让「未知」继续以键缺席表达，与 schema 里 optional 的语义一致。
+    if (!countersChanged && !this.snapshot.usage.counters) return deltas;
+
+    let lastUsageIndex = -1;
+    for (let index = deltas.length - 1; index >= 0; index -= 1) {
+      const delta = deltas[index]!;
+      if (delta.op === "state.updated" && delta.patch.usage) {
+        lastUsageIndex = index;
+        break;
+      }
+    }
+
+    // 本帧已有 usage patch：就地补上 counters，不额外追加一条（避免同帧两条 usage 互相覆盖）。
+    if (lastUsageIndex >= 0) {
+      const target = deltas[lastUsageIndex]!;
+      if (target.op !== "state.updated" || !target.patch.usage) return deltas;
+      const usage = target.patch.usage;
+      if (usage.counters?.turns === counters.turns && usage.counters?.steps === counters.steps) {
+        return deltas;
+      }
+      const repaired = [...deltas];
+      repaired[lastUsageIndex] = {
+        ...target,
+        patch: { ...target.patch, usage: { ...usage, counters: { ...counters } } },
+      };
+      return repaired;
+    }
+
+    // 本帧没有 usage patch 但计数变了：补一条，且必须带上 snapshot 当前水位，
+    // 否则这条 patch 会把 contextWindow/cumulative 退回初始值。
+    return [
+      ...deltas,
+      {
+        op: "state.updated",
+        patch: { usage: { ...this.snapshot.usage, counters: { ...counters } } },
+      },
+    ];
   }
 
   /**
@@ -1129,6 +1216,7 @@ export class ProductProjection {
     clone.configModeTouchedByEvent = this.configModeTouchedByEvent;
     clone.droppedContentStreamEventCount = this.droppedContentStreamEventCount;
     clone.normalizationDiagnostics = [...this.normalizationDiagnostics];
+    clone.counters = { ...this.counters };
     return clone;
   }
 
@@ -1172,6 +1260,7 @@ export class ProductProjection {
     this.configModeTouchedByEvent = candidate.configModeTouchedByEvent;
     this.droppedContentStreamEventCount = candidate.droppedContentStreamEventCount;
     this.normalizationDiagnostics = candidate.normalizationDiagnostics;
+    this.counters = candidate.counters;
   }
 
   /**

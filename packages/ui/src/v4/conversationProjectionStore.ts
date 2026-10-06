@@ -23,6 +23,7 @@ import { logger } from "@/logger.js";
 import type { ConversationTurnNavigatorHydrationResult } from "@/v4/conversationTurnNavigatorHelpers.js";
 import type { ConversationTransport } from "@/v4/transport.js";
 import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
+import { createFrameBatcher } from "@/lib/frameBatcher.js";
 
 /**
  * runtime 换代打断 subscribe 后的退避节奏。
@@ -330,6 +331,17 @@ export class ConversationProjectionStore {
       > & { directoryRevision: number })
     | null = null;
   private closed = false;
+  /**
+   * 订阅通知的帧级合并器。
+   *
+   * 状态写入（this.state）保持同步——getState 随时返回最新投影，水位/断档判定不受影响；
+   * 只有「对外广播这次变化」被合并到下一帧执行一次。
+   * 流式 delta 的到达频率高于渲染帧率时（desktop continuous 的 flush 窗口 30ms，
+   * 一次 model step 内的多个 delta 可落在同一帧内），逐帧通知会让 SessionPane 及其
+   * 全部 O(rows) 派生 memo 按 token 频率重算；合并后同一帧内无论来多少 delta
+   * 只重渲染一次，且不会丢帧内最后一次状态。
+   */
+  private readonly notifyBatcher = createFrameBatcher();
 
   constructor(
     readonly topic: string,
@@ -376,7 +388,11 @@ export class ConversationProjectionStore {
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+      // 退订后不留待执行的帧回调：否则 close 之外的场景会对空/缩小后的订阅集空跑一帧。
+      if (this.listeners.size === 0) this.notifyBatcher.cancel();
+    };
   }
 
   onOnlineModelTransition(listener: (transition: SessionModelTransition) => void): () => void {
@@ -386,8 +402,15 @@ export class ConversationProjectionStore {
 
   private setState(patch: Partial<ConversationStoreState>): void {
     this.state = { ...this.state, ...patch };
-    for (const listener of this.listeners) listener();
+    if (this.listeners.size === 0) return;
+    // 合并到下一帧广播；读取方随时可通过 getState 拿到最新状态。
+    this.notifyBatcher.schedule(this.notifyListeners);
   }
+
+  private readonly notifyListeners = (): void => {
+    // 拷贝一份：监听器回调里退订/新增会直接改动 this.listeners。
+    for (const listener of [...this.listeners]) listener();
+  };
 
   /**
    * 发起/重发订阅。base 取自当前 snapshot 水位（水位不变量：仅当真持有该时刻
@@ -1356,6 +1379,9 @@ export class ConversationProjectionStore {
     this.generation++;
     const { subscriptionId } = this.state;
     this.setState({ status: "closed", subscriptionId: null });
+    // 终态必须同步可见：正常通知已被合并到帧边界，这里立即排空队列，
+    // 避免 close 之后还残留一帧「已关闭」的延迟通知。
+    this.notifyBatcher.flush();
     if (subscriptionId) {
       try {
         await this.transport.unsubscribe(subscriptionId);

@@ -105,6 +105,9 @@ export function projectZCodeFileCitations(
   options: { streaming: boolean },
 ): ZCodeFileCitationProjection {
   if (!options.streaming || !content) return { visibleText: content };
+  // 所有 citation 指令形态（单冒号 / 三冒号 / 智能引号）都以冒号为定界符，
+  // 缺冒号即恒等。避免流式期每个 token 都做一次代码围栏区间扫描。
+  if (!content.includes(":")) return { visibleText: content };
 
   const protectedRanges = findMarkdownCodeRanges(content);
   const unclosedStart = findUnclosedAssistantDirectiveStart(

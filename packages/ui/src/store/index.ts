@@ -24,6 +24,7 @@ import {
 } from "@/store/codingPlanQuotaResetState.js";
 import { DEFAULT_CODE_PREVIEW_SETTINGS } from "@/lib/codePreviewSettings.js";
 import { readSafeLocalStorage, writeSafeLocalStorage } from "@/lib/browserEnvironment.js";
+import { withRendererPerformanceMode } from "@/lib/rendererResourceBudget.js";
 import {
   applyUiFontSizePx,
   loadUiFontSizePx,
@@ -93,6 +94,20 @@ function loadCodePreviewSettings(): CodePreviewSettings {
 
 function loadPerformanceMode(): boolean {
   return readSafeLocalStorage(PERFORMANCE_MODE_STORAGE_KEY) === "true";
+}
+
+/**
+ * 把渲染侧预算的 reducedMotion 落到 `<html>` 上。
+ *
+ * 放在这里是全应用唯一的开关点：`performanceMode` 的**写入路径只有 store**（本地持久化 +
+ * set），而 `<html>` 上的类名 CSS 与 JS 都能读到，组件不必各自再判一次预算。
+ * 类名沿用仓库既有的 documentElement 约定（dark / theme-* / platform-*）。
+ */
+function applyReducedMotionClass(reducedMotion: boolean): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  document.documentElement.classList.toggle("zcode-reduced-motion", reducedMotion);
 }
 
 // ============================================================================
@@ -296,6 +311,7 @@ export function createZCodeStore(
     performanceMode: loadPerformanceMode(),
     setPerformanceMode: (enabled: boolean) => {
       writeSafeLocalStorage(PERFORMANCE_MODE_STORAGE_KEY, enabled ? "true" : "false");
+      applyReducedMotionClass(withRendererPerformanceMode(enabled).renderer.reducedMotion);
       set({ performanceMode: enabled });
     },
 
@@ -494,6 +510,10 @@ export function createZCodeStore(
   document.documentElement.classList.toggle(
     "dark",
     resolveTheme(useStore.getState().theme) === "dark",
+  );
+  // 首帧就要带上低配标记：等组件挂载后再补会让首屏动画先跑一轮。
+  applyReducedMotionClass(
+    withRendererPerformanceMode(useStore.getState().performanceMode).renderer.reducedMotion,
   );
 
   return useStore;

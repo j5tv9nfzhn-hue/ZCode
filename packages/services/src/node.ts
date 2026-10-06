@@ -382,6 +382,7 @@ import {
   IProviderSettingsService,
 } from "./model-provider/providerFacadeServices.js";
 import { createProviderSettingsConnectivityTester } from "./model-provider/providerSettingsConnectivity.js";
+import { createProviderModelDiscoverer } from "./model-provider/providerModelDiscovery.js";
 import {
   createProviderProvisioningSource,
   listProviderProvisioningCredentialKeys,
@@ -1633,6 +1634,9 @@ export function createLocalServices(options: {
         return providerConnectivityAgentService.testModelConnectivity(input);
       },
     }),
+    // 模型发现直接在 Host 进程发请求：provider_config.json 与 API Key 都在这里，
+    // 不需要绕 CLI 执行链，也不需要把凭据下发到 Renderer。
+    discoverModels: createProviderModelDiscoverer(),
     disposeAccountSource: () => {
       disposeAccountProviderInvalidation();
       accountProviderRefreshErrorDispose();

@@ -2051,3 +2051,26 @@ body {
 .prompt-mention[data-mention-category="plugins"]::before {
   border-radius: var(--radius-sm);
 }
+
+/*
+ * 渲染侧资源预算的 reducedMotion 开关（低配机器自动开，或用户在设置里开「性能模式」）。
+ * 类名由 `store/index.ts` 的 setPerformanceMode / createZCodeStore 落到 <html> 上，
+ * 是这个开关的全应用唯一写入点。
+ *
+ * 用「时长压到 1ms」而不是 `animation: none` / `transition: none`：
+ * 时长为 0 时 transitionend 不会触发，依赖该事件的代码会永远等下去
+ * （见 app-shell/useAnimatedResizablePanel.ts，它虽有 fallback 定时器，但不应靠兜底活着）。
+ * 1ms 同样近乎不耗算力——插值只跑一帧——但事件照常派发。
+ *
+ * 需要 !important 才能压过 Tailwind 工具类上的 duration-* / animate-*。
+ */
+html.zcode-reduced-motion *,
+html.zcode-reduced-motion *::before,
+html.zcode-reduced-motion *::after {
+  animation-duration: 1ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
+}

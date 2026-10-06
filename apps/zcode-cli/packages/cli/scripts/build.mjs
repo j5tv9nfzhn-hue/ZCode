@@ -11,7 +11,8 @@ const executableFileMode = 0o755;
 const packageJsonFile = "package.json";
 const rootPackageVersionError = "Root package.json must define a non-empty string version.";
 const desktopAgentBuildFlag = "--desktop-agent";
-export const resolveBuildExternal = () => ["@zcode/tui", "playwright-core", "koffi"];
+// TUI 包已随 CLI 产品移除；这里只保留运行时自身无法内联的原生/浏览器依赖。
+export const resolveBuildExternal = () => ["playwright-core", "koffi"];
 
 export const readZodBuildVersion = async () => {
   const sharedPackage = JSON.parse(

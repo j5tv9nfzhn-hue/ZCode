@@ -32,6 +32,16 @@ const PROCESS_TREE_WINDOWS_TASKKILL_TIMEOUT_MS = 1_000;
 const PROCESS_TREE_WINDOWS_EXIT_OBSERVATION_GRACE_MS = 250;
 const processTreeLogger = createServiceLogger("zcode-agent-process-tree");
 
+/**
+ * 单帧未闭合字节上限。
+ *
+ * stdout 只按 `\n` 切帧，正常帧远小于此值；一旦某段输出长期不带换行
+ * （协议外的 stdout 泄漏、超大单行），stdoutBuffer 会无上限增长并拖垮 Host 堆。
+ * 超限按传输损坏处理：记日志并关闭传输，交由进程管理器按 runtime 不可用重建，
+ * 而不是继续吃内存。
+ */
+const MAX_STDOUT_FRAME_BYTES = 32 * 1024 * 1024;
+
 export class ZCodeStdioTransport implements ZCodeProtocolTransport {
   readonly kind = "stdio" as const;
 
@@ -211,6 +221,14 @@ export class ZCodeStdioTransport implements ZCodeProtocolTransport {
       return;
     }
     this.stdoutBuffer += typeof chunk === "string" ? chunk : this.stdoutDecoder.write(chunk);
+    if (this.stdoutBuffer.length > MAX_STDOUT_FRAME_BYTES) {
+      this.stdoutBuffer = "";
+      processTreeLogger.error(
+        `stdio 单帧超过 ${MAX_STDOUT_FRAME_BYTES} 字节仍未遇到换行，按传输损坏关闭`,
+      );
+      this.fireClose({ reason: `stdout_frame_too_large: ${MAX_STDOUT_FRAME_BYTES}` });
+      return;
+    }
     this.drainStdoutFrames();
   };
 

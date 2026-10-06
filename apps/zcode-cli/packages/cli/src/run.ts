@@ -1,36 +1,19 @@
-import { extractDisallowedToolsArgs, parseGlobalArgs } from "./arguments.js";
 import { createNodeLoggerFactory } from "@zcode/adapters";
-import { getRuntimeInfo, type PresentationSurface } from "@zcode/core";
-import { color, formatJson, supportsColor } from "@zcode/core";
-import { getZCodeCopy, isUiLocale, type UiLocale } from "@zcode/i18n";
-import type { RunContext, GlobalOptions, GlobalOutputFormat } from "@zcode/shared-types";
+import type { PresentationSurface } from "@zcode/core";
+import type { RunContext } from "@zcode/shared-types";
 import {
   applyCliRuntimeEnvSanitization,
   loadCliDotenv,
   prepareCliRuntimeEnv,
   shouldLoadCliDotenvForProtocolServer,
 } from "./env.js";
-import { formatCliHelp } from "./help.js";
 import { runHooksCommand } from "./hooks-trust-command.js";
-import { detectCliLocale } from "./locale.js";
 import { loadBootstrapModule } from "./bootstrap-loader.js";
 import { runEmbeddedSearchCli } from "./internal-search/embedded-search-cli.js";
-import { runCommandsCommand } from "./commands-command.js";
 import { resolveCliCwd } from "./cwd.js";
-import { runLoginCommand, runLogoutCommand } from "./login-command.js";
-import { CLI_COMMAND_NAME, CLI_PROCESS_NAME } from "./process-name.js";
 import { isPluginHostInvocation, runPluginHostCommand } from "./plugin-host-command.js";
 import { isDwfChildInvocation, runDwfChildCommand } from "./dwf-child-command.js";
-import { runPrompt } from "./prompt-command.js";
-import { runPluginsCommand, type PluginsCommandFlags } from "./plugins-command.js";
-import { runSkillsCommand } from "./skills-command.js";
-import { runTuiCommand } from "./tui-command.js";
-import type {
-  CliPermissionMode,
-  CliResumeRequest,
-  CliTargetRequest,
-  RunDependencies,
-} from "./cli-types.js";
+import type { RunDependencies } from "./cli-types.js";
 
 export type { RunDependencies } from "./cli-types.js";
 
@@ -38,207 +21,43 @@ declare const __CLI_VERSION__: string | undefined;
 
 const version = typeof __CLI_VERSION__ === "string" ? __CLI_VERSION__ : "0.0.0";
 
-const EMPTY_TARGET_ERROR = "--target requires non-empty text.";
-const DEFAULT_HEADLESS_PROMPT_MODE: CliPermissionMode = "yolo";
-const FORCE_MCS_SCOPE_ERROR = "--force-mcs can only be used with --prompt, --target, or tui.";
-const TARGET_REPLACE_REQUIRES_TARGET_ERROR = "--target-replace requires --target.";
-const TARGET_CONFLICTS_WITH_PROMPT_ERROR =
-  '--target cannot be used with --prompt. Use either --target <objective> or --prompt "/goal <objective>".';
-const BROWSER_EXECUTABLE_REQUIRES_HEADLESS_ERROR =
-  "--browser-executable requires --browser-use=headless.";
-const BROWSER_USE_SCOPE_ERROR =
-  "--browser-use=headless can only be used with --prompt, --target, or tui.";
-const SURFACE_SCOPE_ERROR =
-  "--surface can only be used with --prompt, --target, app-server, or agent-server.";
-const MEMORY_BENCH_SCOPE_ERROR = "--memory-bench can only be used with -p/--prompt.";
-const ENABLE_WORKFLOW_SCOPE_ERROR =
-  "--enable-workflow can only be used with -p/--prompt or --target.";
-
-const pluginsCommandFlags = (
-  values: ReturnType<typeof parseGlobalArgs>["values"],
-): PluginsCommandFlags => ({
-  ...(values.all === true ? { all: true } : {}),
-  ...(values.available === true ? { available: true } : {}),
-  ...(values["keep-data"] === true ? { keepData: true } : {}),
-  ...(typeof values.scope === "string" ? { scope: values.scope } : {}),
-  ...(Array.isArray(values.sparse) ? { sparse: values.sparse as string[] } : {}),
-});
-
-const commandName = (positionals: string[]): string => positionals[0] ?? "tui";
-
-const isForceMcsSupportedInvocation = (input: {
-  positionals: string[];
-  prompt?: string;
-  targetRequest?: CliTargetRequest;
-}): boolean =>
-  typeof input.prompt === "string" ||
-  input.targetRequest !== undefined ||
-  commandName(input.positionals) === "tui";
-
-const isPresentationSurfaceSupportedInvocation = (input: {
-  positionals: string[];
-  prompt?: string;
-  targetRequest?: CliTargetRequest;
-}): boolean => {
-  const command = commandName(input.positionals);
-  return (
-    typeof input.prompt === "string" ||
-    input.targetRequest !== undefined ||
-    command === "app-server" ||
-    command === "agent-server"
-  );
-};
-
-const globalOptions = (
-  values: ReturnType<typeof parseGlobalArgs>["values"],
-  locale: UiLocale | undefined,
-  detectedLocale: GlobalOptions["detectedLocale"],
-  browserUse: GlobalOptions["browserUse"],
-  browserExecutable: GlobalOptions["browserExecutable"],
-  outputFormat: GlobalOptions["outputFormat"],
-): GlobalOptions => {
-  return {
-    browserExecutable,
-    browserUse,
-    detectedLocale,
-    ...(values["enable-workflow"] === true ? { enableWorkflow: true } : {}),
-    force: values.force === true,
-    json: values.json === true,
-    locale,
-    ...(values["memory-bench"] === true ? { memoryBench: true } : {}),
-    noColor: values["no-color"] === true,
-    ...(outputFormat ? { outputFormat } : {}),
-    verbose: values.verbose === true,
-  };
-};
-
-const OUTPUT_FORMATS: readonly GlobalOutputFormat[] = ["text", "json", "stream-json"];
-
 /**
- * Validate --output-format. Rejecting an unknown value matters more than it
- * looks: a caller that misspells it would otherwise get plain text back and
- * silently parse nothing.
+ * 本进程已不再承载任何面向人的 CLI 命令（TUI / --prompt / --target / login /
+ * plugins / skills / commands），只剩桌面端与远程资产需要的运行时角色。
+ * 因此参数解析只保留这些角色真正消费的开关，stdout 在协议模式下是严格的帧通道。
  */
-const normalizeOutputFormat = (value: string | undefined): GlobalOutputFormat | undefined => {
-  if (value === undefined) return undefined;
-  if ((OUTPUT_FORMATS as readonly string[]).includes(value)) return value as GlobalOutputFormat;
-  throw new Error(
-    `--output-format must be one of ${OUTPUT_FORMATS.join(", ")} (received: ${value}).`,
-  );
+const PROTOCOL_COMMAND_NAMES = new Set(["app-server", "agent-server"]);
+
+const USAGE = `Usage:
+  zcode app-server --stdio [--surface desktop] [--prepare-storage] [--cwd <path>]
+  zcode plugin-host <args...>
+  zcode dwf-child <args...>
+  zcode __internal-search <args...>
+  zcode hooks trust <status|review|grant|revoke> [options]
+`;
+
+const writeUsage = (stream: NodeJS.WriteStream): void => {
+  stream.write(USAGE);
 };
 
-const normalizeLocaleOption = (value: string | undefined): UiLocale | undefined => {
-  if (value === undefined) return undefined;
-  if (isUiLocale(value)) return value;
-  throw new Error(getZCodeCopy().cli.errors.localeUnsupported(value));
+const failWithUsage = (stream: NodeJS.WriteStream, message: string): number => {
+  stream.write(`${message}\n\n`);
+  writeUsage(stream);
+  return 1;
 };
 
-const normalizePromptMode = (value: string | undefined): CliPermissionMode | undefined => {
-  if (value === undefined) return undefined;
-  const mode = value.toLowerCase();
-  if (mode === "build" || mode === "plan" || mode === "edit" || mode === "yolo") return mode;
-  throw new Error(`Unsupported --mode value: ${value}. Supported modes: build, edit, plan, yolo.`);
-};
-
-const normalizeBrowserUse = (value: string | undefined): GlobalOptions["browserUse"] => {
-  if (value === undefined) return undefined;
-  if (value.toLowerCase() === "headless") return "headless";
-  throw new Error(`Unsupported --browser-use value: ${value}. Supported value: headless.`);
-};
-
-const normalizePresentationSurface = (value: string | undefined): PresentationSurface => {
+/** 协议子进程的 presentation surface；桌面 Host 显式传 desktop，其余按 terminal。 */
+const resolvePresentationSurface = (value: string | undefined): PresentationSurface => {
   if (value === undefined || value.toLowerCase() === "terminal") return "terminal";
   if (value.toLowerCase() === "desktop") return "zcode_desktop";
   throw new Error(`Unsupported --surface value: ${value}. Supported surfaces: terminal, desktop.`);
 };
 
-const normalizeTargetRequest = (
-  values: ReturnType<typeof parseGlobalArgs>["values"],
-): CliTargetRequest | undefined => {
-  const rawTarget = values.target as string | undefined;
-  const replaceExisting = values["target-replace"] === true;
-  if (rawTarget === undefined) {
-    if (replaceExisting) {
-      throw new Error(TARGET_REPLACE_REQUIRES_TARGET_ERROR);
-    }
-    return undefined;
-  }
-
-  const objective = rawTarget.trim();
-  if (objective.length === 0) {
-    throw new Error(EMPTY_TARGET_ERROR);
-  }
-
-  return {
-    objective,
-    replaceExisting,
-  };
-};
-
-const buildHeadlessTargetCommand = (targetRequest: CliTargetRequest): string =>
-  targetRequest.replaceExisting
-    ? `/goal replace ${targetRequest.objective}`
-    : `/goal ${targetRequest.objective}`;
-
-const writeHelp = (
-  stdout: NodeJS.WriteStream,
-  locale?: UiLocale,
-  detectedLocale?: GlobalOptions["detectedLocale"],
-): void => {
-  stdout.write(formatCliHelp(version, locale, detectedLocale));
-};
-
-const runDoctor = (ctx: RunContext, options: GlobalOptions, workingDirectory: string): number => {
-  const runtime = getRuntimeInfo();
-  const payload = {
-    cli: {
-      name: CLI_COMMAND_NAME,
-      processName: CLI_PROCESS_NAME,
-      version,
-    },
-    runtime: {
-      arch: runtime.arch,
-      cwd: workingDirectory,
-      execPath: runtime.execPath,
-      node: runtime.node,
-      platform: runtime.platform,
-      processTitle: process.title,
-      sea: runtime.sea,
-    },
-    packaging: {
-      default: "node-bundle",
-      sea: "optional",
-    },
-  };
-
-  if (options.json) {
-    ctx.stdout.write(formatJson(payload));
-    return 0;
-  }
-
-  const colors = supportsColor(ctx.stdout, options.noColor);
-  ctx.stdout.write(`${color.bold("zcode doctor", colors)}\n`);
-  ctx.stdout.write(`version: ${payload.cli.version}\n`);
-  ctx.stdout.write(`process: ${payload.runtime.processTitle}\n`);
-  ctx.stdout.write(`node: ${payload.runtime.node}\n`);
-  ctx.stdout.write(`platform: ${payload.runtime.platform}/${payload.runtime.arch}\n`);
-  ctx.stdout.write(`sea: ${payload.runtime.sea ? "yes" : "no"} (${payload.packaging.sea})\n`);
-  ctx.stdout.write(`default artifact: ${payload.packaging.default}\n`);
-
-  if (options.verbose) {
-    ctx.stdout.write(`execPath: ${payload.runtime.execPath}\n`);
-    ctx.stdout.write(`cwd: ${payload.runtime.cwd}\n`);
-  }
-
-  return 0;
-};
-
 const runZCodeProtocolCommand = async (
   ctx: RunContext,
-  options: GlobalOptions,
   deps: RunDependencies,
   presentationSurface: PresentationSurface,
-  prepareStorageOnly = false,
+  prepareStorageOnly: boolean,
 ): Promise<number> => {
   try {
     const env = prepareCliRuntimeEnv(deps.env ?? process.env);
@@ -279,7 +98,7 @@ const runZCodeProtocolCommand = async (
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     ctx.stderr.write(`Error: ${message}\n`);
-    if (options.verbose && error instanceof Error && error.stack) {
+    if (error instanceof Error && error.stack) {
       ctx.stderr.write(`${error.stack}\n`);
     }
     return 1;
@@ -307,281 +126,78 @@ export const run = async (ctx: RunContext, deps: RunDependencies = {}): Promise<
   }
 
   if (ctx.argv[0] === "hooks") {
-    return await runHooksCommand(ctx, deps, version);
+    return runHooksCommand(ctx, deps, version);
   }
 
-  let parsed: ReturnType<typeof parseGlobalArgs>;
-  let toolDisallowlist: readonly string[] | undefined;
-
-  try {
-    const extracted = extractDisallowedToolsArgs(ctx.argv);
-    parsed = parseGlobalArgs(extracted.args);
-    toolDisallowlist = extracted.toolDisallowlist;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.stderr.write(`${message}\n\n`);
-    writeHelp(ctx.stderr);
-    return 1;
+  const command = ctx.argv[0] ?? "";
+  if (!PROTOCOL_COMMAND_NAMES.has(command)) {
+    return failWithUsage(
+      ctx.stderr,
+      command.length === 0 ? "Missing command." : `Unknown command: ${command}`,
+    );
   }
 
-  let locale: UiLocale | undefined;
-  try {
-    locale = normalizeLocaleOption(parsed.values.locale as string | undefined);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.stderr.write(`${message}\n`);
-    return 1;
-  }
+  // 协议子进程的参数面已收窄到运行时必需的开关，因此这里不再走 parseGlobalArgs：
+  // 它携带的交互层选项（--prompt/--target/--resume/--mode/插件商店开关等）已随 CLI 产品移除。
+  const flag = (name: string): string | undefined => {
+    const index = ctx.argv.indexOf(name);
+    if (index < 0) return undefined;
+    return ctx.argv[index + 1];
+  };
+  const hasFlag = (name: string): boolean => ctx.argv.includes(name);
 
-  let mode: CliPermissionMode | undefined;
-  let browserUse: GlobalOptions["browserUse"];
   let presentationSurface: PresentationSurface;
   try {
-    mode = normalizePromptMode(parsed.values.mode as string | undefined);
+    presentationSurface = resolvePresentationSurface(flag("--surface"));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.stderr.write(`${message}\n`);
-    return 1;
-  }
-
-  try {
-    browserUse = normalizeBrowserUse(parsed.values["browser-use"] as string | undefined);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.stderr.write(`${message}\n`);
-    return 1;
-  }
-  try {
-    presentationSurface = normalizePresentationSurface(parsed.values.surface as string | undefined);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.stderr.write(`${message}\n`);
-    return 1;
-  }
-  const browserExecutable = parsed.values["browser-executable"] as string | undefined;
-  if (browserExecutable !== undefined && browserUse !== "headless") {
-    ctx.stderr.write(`${BROWSER_EXECUTABLE_REQUIRES_HEADLESS_ERROR}\n`);
-    return 1;
-  }
-
-  const resumeRequest: CliResumeRequest = {
-    continueSession: parsed.values.continue === true,
-    resumeSessionId: parsed.values.resume as string | undefined,
-  };
-  if (resumeRequest.continueSession && resumeRequest.resumeSessionId) {
-    ctx.stderr.write("--resume and --continue cannot be used together.\n");
-    return 1;
-  }
-
-  const env = prepareCliRuntimeEnv(deps.env ?? process.env);
-  const detectedLocale = detectCliLocale(env);
-  let outputFormat: GlobalOptions["outputFormat"];
-  try {
-    outputFormat = normalizeOutputFormat(parsed.values["output-format"] as string | undefined);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.stderr.write(`${message}\n`);
-    return 1;
-  }
-  const options = globalOptions(
-    parsed.values,
-    locale,
-    detectedLocale,
-    browserUse,
-    browserExecutable,
-    outputFormat,
-  );
-  const forceMcs = parsed.values["force-mcs"] === true;
-  let targetRequest: CliTargetRequest | undefined;
-  try {
-    targetRequest = normalizeTargetRequest(parsed.values);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.stderr.write(`${message}\n`);
-    return 1;
-  }
-
-  if (targetRequest && typeof parsed.values.prompt === "string") {
-    ctx.stderr.write(`${TARGET_CONFLICTS_WITH_PROMPT_ERROR}\n`);
-    return 1;
-  }
-
-  if (
-    parsed.values.surface !== undefined &&
-    !isPresentationSurfaceSupportedInvocation({
-      positionals: parsed.positionals,
-      prompt: parsed.values.prompt as string | undefined,
-      targetRequest,
-    })
-  ) {
-    ctx.stderr.write(`${SURFACE_SCOPE_ERROR}\n`);
-    return 1;
-  }
-
-  if (parsed.values.help === true) {
-    writeHelp(ctx.stdout, options.locale, options.detectedLocale);
-    return 0;
-  }
-
-  if (parsed.values.version === true) {
-    ctx.stdout.write(`${version}\n`);
-    return 0;
-  }
-
-  if (
-    options.enableWorkflow &&
-    (parsed.positionals.length > 0 ||
-      (typeof parsed.values.prompt !== "string" && targetRequest === undefined))
-  ) {
-    ctx.stderr.write(`${ENABLE_WORKFLOW_SCOPE_ERROR}\n`);
-    return 1;
-  }
-
-  if (
-    options.memoryBench &&
-    (typeof parsed.values.prompt !== "string" || parsed.positionals.length > 0)
-  ) {
-    ctx.stderr.write(`${MEMORY_BENCH_SCOPE_ERROR}\n`);
-    return 1;
-  }
-
-  if (
-    browserUse === "headless" &&
-    !isForceMcsSupportedInvocation({
-      positionals: parsed.positionals,
-      prompt: parsed.values.prompt as string | undefined,
-      targetRequest,
-    })
-  ) {
-    ctx.stderr.write(`${BROWSER_USE_SCOPE_ERROR}\n`);
-    return 1;
-  }
-
-  if (
-    forceMcs &&
-    !isForceMcsSupportedInvocation({
-      positionals: parsed.positionals,
-      prompt: parsed.values.prompt as string | undefined,
-      targetRequest,
-    })
-  ) {
-    ctx.stderr.write(`${FORCE_MCS_SCOPE_ERROR}\n`);
-    return 1;
+    return failWithUsage(
+      ctx.stderr,
+      error instanceof Error ? error.message : String(error),
+    );
   }
 
   let workingDirectory: string;
   try {
     workingDirectory = resolveCliCwd({
       cwd: deps.cwd ?? process.cwd,
-      requestedCwd: parsed.values.cwd as string | undefined,
+      requestedCwd: flag("--cwd"),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.stderr.write(`${message}\n`);
-    return 1;
+    return failWithUsage(
+      ctx.stderr,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  if (hasFlag("--help")) {
+    writeUsage(ctx.stdout);
+    return 0;
+  }
+  if (hasFlag("--version")) {
+    ctx.stdout.write(`${version}\n`);
+    return 0;
   }
 
   const commandDeps: RunDependencies = {
     ...deps,
     cwd: () => workingDirectory,
-    env,
+    env: prepareCliRuntimeEnv(deps.env ?? process.env),
     logger:
       deps.logger ??
-      createNodeLoggerFactory({ env }).createLogger("zcode").child({ module: "cli" }),
+      createNodeLoggerFactory({ env: deps.env ?? process.env }).createLogger("zcode").child({
+        module: "cli",
+      }),
     loadDotenv: (dotenvOptions = {}) => {
       const dotenvResult = (deps.loadDotenv ?? loadCliDotenv)(dotenvOptions);
-      applyCliRuntimeEnvSanitization(dotenvOptions.env ?? env);
+      applyCliRuntimeEnvSanitization(dotenvOptions.env ?? process.env);
       return dotenvResult;
     },
   };
 
-  if (typeof parsed.values.prompt === "string") {
-    return await runPrompt(
-      ctx,
-      parsed.values.prompt,
-      parsed.values.attach ?? [],
-      options,
-      commandDeps,
-      version,
-      mode ?? DEFAULT_HEADLESS_PROMPT_MODE,
-      resumeRequest,
-      toolDisallowlist,
-      forceMcs,
-      presentationSurface,
-    );
-  }
-
-  if (targetRequest) {
-    return await runPrompt(
-      ctx,
-      buildHeadlessTargetCommand(targetRequest),
-      [],
-      options,
-      commandDeps,
-      version,
-      mode,
-      resumeRequest,
-      toolDisallowlist,
-      forceMcs,
-      presentationSurface,
-    );
-  }
-
-  switch (commandName(parsed.positionals)) {
-    case "help":
-      writeHelp(ctx.stdout, options.locale, options.detectedLocale);
-      return 0;
-    case "version":
-      ctx.stdout.write(`${version}\n`);
-      return 0;
-    case "agent-server":
-    case "app-server":
-      return await runZCodeProtocolCommand(
-        ctx,
-        options,
-        commandDeps,
-        presentationSurface,
-        parsed.values["prepare-storage"] === true,
-      );
-    case "doctor":
-      return runDoctor(ctx, options, workingDirectory);
-    case "login":
-      return await runLoginCommand(
-        ctx,
-        options,
-        commandDeps,
-        parsed.values["no-browser"] === true,
-        parsed.positionals.slice(1),
-      );
-    case "logout":
-      return await runLogoutCommand(ctx, options, commandDeps);
-    case "commands":
-      return await runCommandsCommand(ctx, options, commandDeps, parsed.positionals.slice(1));
-    case "plugin":
-    case "plugins":
-      return await runPluginsCommand(
-        ctx,
-        options,
-        commandDeps,
-        parsed.positionals.slice(1),
-        pluginsCommandFlags(parsed.values),
-      );
-    case "skills":
-      return await runSkillsCommand(ctx, options, commandDeps, parsed.positionals.slice(1));
-    case "tui":
-      return await runTuiCommand(
-        ctx,
-        options,
-        commandDeps,
-        version,
-        mode,
-        resumeRequest,
-        toolDisallowlist,
-        forceMcs,
-      );
-    default:
-      ctx.stderr.write(`Unknown command: ${commandName(parsed.positionals)}\n\n`);
-      writeHelp(ctx.stderr, options.locale, options.detectedLocale);
-      return 1;
-  }
+  return await runZCodeProtocolCommand(
+    ctx,
+    commandDeps,
+    presentationSurface,
+    hasFlag("--prepare-storage"),
+  );
 };

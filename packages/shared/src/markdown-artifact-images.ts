@@ -1,4 +1,6 @@
 const ARTIFACT_IMAGE_RENDER_PREFIX = "/__zcode_artifact_image__/";
+/** `ARTIFACT_IMAGE_PATTERN` 唯一可能的 URL 前缀，用作整串快速路径的判据。 */
+const ARTIFACT_IMAGE_REF_PREFIX = "zcode-artifact://";
 const FENCE_PATTERN = /^( {0,3})(`{3,}|~{3,})(.*)$/u;
 const ARTIFACT_IMAGE_PATTERN =
   /!\[[^\]\n]*\]\(\s*(?:<)?(zcode-artifact:\/\/[^\s)>]+)(?:>)?(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/gu;
@@ -40,6 +42,9 @@ export function extractMarkdownArtifactImageRefs(markdown: string): string[] {
 }
 
 export function rewriteMarkdownArtifactImageSources(markdown: string): string {
+  // 正则只可能匹配含 `zcode-artifact://` 的图片语法；缺这个字面量即恒等。
+  // 流式输出期间每个 token 都会调用，避免无谓的整串 split/map/join 与逐行正则。
+  if (!markdown.includes(ARTIFACT_IMAGE_REF_PREFIX)) return markdown;
   return mapOutsideMarkdownFences(markdown, (line) =>
     line.replace(ARTIFACT_IMAGE_PATTERN, (image, ref: string) =>
       image.replace(ref, `${ARTIFACT_IMAGE_RENDER_PREFIX}${encodeURIComponent(ref)}`),

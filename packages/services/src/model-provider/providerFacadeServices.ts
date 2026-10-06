@@ -68,7 +68,47 @@ export interface IProviderSettingsService {
   testModelConnectivity(
     input: ProviderSettingsConnectivityRequest,
   ): Promise<ModelConnectivityResult>;
+  /**
+   * 从 provider 的模型端点发现可用模型 id。
+   *
+   * 只对 API Key 类接入有效：Account / Coding Plan 的模型目录由订阅侧下发，端点通常不暴露
+   * `/models`。
+   *
+   * **只读、不落库**：本方法不写任何配置，也不返回「建议写回」的目标集合。发现结果必须由
+   * 用户在 UI 上显式勾选后，逐个走 `addPersonalModel` 才能生效。这不是实现取舍而是产品决定：
+   * 端点返回的是「服务端此刻能列出的模型」，与本地配置里的元数据（上下文窗口、推理档位、
+   * 用户手改过的默认值）语义不同，自动合并会用空元数据覆盖既有配置、也会把 embedding /
+   * rerank 一类非对话模型塞进可选列表。
+   */
+  discoverProviderModels(
+    input: ProviderModelDiscoveryRequest,
+  ): Promise<ProviderModelDiscoveryResult>;
 }
+
+/**
+ * 模型发现请求。
+ *
+ * `baseUrlOverride` / `apiKeyOverride` 服务未保存的编辑态：用户在设置页改了端点还没点保存时，
+ * 应该能直接按新端点拉一次，而不是被迫先保存一份可能写坏的配置。
+ */
+export interface ProviderModelDiscoveryRequest {
+  readonly providerId: ProviderId;
+  readonly baseUrlOverride?: string;
+  readonly apiKeyOverride?: string;
+}
+
+export type ProviderModelDiscoveryResult =
+  | { readonly status: "ok"; readonly modelIds: readonly string[] }
+  | { readonly status: "unsupported"; readonly reason: string }
+  | { readonly status: "error"; readonly message: string };
+
+/** 由目标 Environment 注入的实际发现实现（Renderer 不直连网络）。 */
+export type ProviderModelDiscoverer = (input: {
+  readonly providerId: ProviderId;
+  readonly baseUrl: string;
+  readonly apiKey: string;
+  readonly apiFormat: string;
+}) => Promise<ProviderModelDiscoveryResult>;
 
 export const IProviderSettingsService = createServiceDescriptor<IProviderSettingsService>(
   ServiceChannels.ProviderSettings,
@@ -110,6 +150,7 @@ export function createProviderSettingsService(
   facade: ProviderSettingsFacade,
   ensureReady: () => Promise<void> = async () => {},
   testConnectivity?: ProviderSettingsConnectivityTester,
+  discoverModels?: ProviderModelDiscoverer,
 ): IProviderSettingsService {
   return {
     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
@@ -204,6 +245,49 @@ export function createProviderSettingsService(
         ...(input.workspaceIdentity ? { workspaceIdentity: input.workspaceIdentity } : {}),
         providerId: input.providerId,
         modelId: input.modelId,
+      });
+    },
+    discoverProviderModels: async (input) => {
+      await ensureReady();
+      if (!discoverModels) {
+        return {
+          status: "unsupported",
+          reason: "当前 Environment 未装配模型发现能力",
+        };
+      }
+      await facade.waitForProviderOperations(input.providerId);
+      const provider = facade
+        .getView()
+        .providers.find((item) => item.providerId === input.providerId);
+      if (!provider) {
+        return { status: "unsupported", reason: "找不到该 provider" };
+      }
+      // Account / Coding Plan（zhipu-account）的凭据是 OAuth，端点通常不提供模型列表；
+      // 这里按接入形态直接判为不支持，不去猜一个必然 401 的请求。
+      const access = provider.effectiveConfig.access;
+      if (!access) {
+        return { status: "unsupported", reason: "请先填写 API Key" };
+      }
+      if (access.type === "zhipu-account") {
+        return {
+          status: "unsupported",
+          reason: "该接入方式不通过 API Key 暴露模型列表",
+        };
+      }
+      const baseUrl =
+        input.baseUrlOverride?.trim() || provider.effectiveConfig.api?.baseUrl?.trim() || "";
+      if (baseUrl.length === 0) {
+        return { status: "unsupported", reason: "请先填写端点地址" };
+      }
+      const apiKey = input.apiKeyOverride?.trim() || access.apiKey?.trim() || "";
+      if (apiKey.length === 0) {
+        return { status: "unsupported", reason: "请先填写 API Key" };
+      }
+      return discoverModels({
+        providerId: input.providerId,
+        baseUrl,
+        apiKey,
+        apiFormat: provider.effectiveConfig.api?.type ?? "openai-chat-completions",
       });
     },
   };

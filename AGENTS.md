@@ -17,23 +17,36 @@
 | Lint             | `pnpm lint` / `pnpm lint:fix`             |
 | 格式检查         | `pnpm fmt:check`                          |
 | 桌面开发         | `pnpm dev:desktop`                        |
-| Web 开发         | `pnpm dev:web`                            |
 | 提交前检查       | `pnpm verify:pre-push`（Lint 与架构检查） |
 | 架构检查         | `pnpm architecture:check --changed`       |
 | 模块阅读包       | `pnpm architecture:context <module-id>`   |
 | 未使用依赖与导出 | `pnpm knip`                               |
 | 导出引用查询     | `pnpm dep:refs --list-exports <file>`     |
+| 单元测试         | `pnpm test`                               |
 
 测试入口以目标包当前的 `package.json` 和实际测试文件为准，不假定存在统一的单测或 E2E 命令。
 
 - `packages/desktop`：Electron main、host、renderer。
-- `packages/web`、`packages/server`：Web 客户端与服务端。
+- `packages/server`：桌面端依赖的远程工作区后端（SSH / WSL / Docker）与远程 stdio 服务端；Web HTTP 宿主已移除。
 - `packages/ui`：共享 React 组件、hooks 与 Zustand store。
 - `packages/services`：业务服务；`packages/rpc`：RPC 框架。
 - `packages/shared`：共享协议与类型；`packages/client`：Agent 客户端 SDK。
-- `apps/zcode-cli`：Agent CLI 与运行时。
+- `apps/zcode-cli`：Agent 运行时（ZCode Protocol 服务端、plugin-host、动态工作流、工具）。交互式 CLI/TUI 外壳已移除。
+- `.github/workflows`：CI 质量门与打包流水线。**只产出 Windows x64（amd64）安装包**，见下方「CI 与发布」。
 - `CONTEXT.md`：插件商店领域词汇；修改相关 UI 前阅读。
 - `DESIGN.md`：UI 设计规范；修改 UI 前阅读。
+
+## CI 与发布
+
+- 两个流水线，**全部跑在 Windows x64 上**，不用 matrix：`ci.yml`（格式 / lint / typecheck / 单测 / 架构检查 / knip）与 `build-windows-amd64.yml`（手动或打 `v*` tag 触发打包）。
+- **强制约束：只产出 Windows x64，产物仅本人使用。** 由四层共同保证，任何一层被绕过都会被下一层拦住：
+  1. `runs-on` 硬编码 `windows-2022`，不得引入 matrix；
+  2. job 级 `env` 固定 `ZCODE_TARGET_OS=win32` / `ZCODE_TARGET_ARCH=x64`；
+  3. 打包必须显式传 `--os win --arch x64`——`packages/desktop/scripts/bundle.mjs` 的默认目标是 **mac / arm64**，漏传会静默产出 mac 包；
+  4. 打包后执行 `node scripts/ci/assert-build-target.mjs --artifacts packages/desktop/dist` 做产物白名单校验（这是真正的牙齿：改 workflow 或给 electron-builder 加别的 target 都会被它拦住）。
+- 所有 job 必须经 `.github/actions/setup-zcode` 完成工具链准备；「Windows x64」的前置断言也在这里，改 workflow 绕不过去。
+- 产物**不做代码签名**（`CSC_IDENTITY_AUTO_DISCOVERY=false`），也**不发布 GitHub Release**，只上传为 workflow artifact（保留 30 天）。要发布渠道时先在这里改口径，不要私自加签名步骤。
+- 工具链版本以 `mise.toml` 为唯一权威，CI 会读它并机械校验实际 Node / pnpm 版本；两处漂移会让流水线直接失败。
 
 ## 实现与验证
 
@@ -57,6 +70,8 @@
 ## 进程、协议与远程控制
 
 - Desktop app 通过 stdio 与 Agent 通信。协议改动同步更新 `packages/shared/src/zcode-protocol/index.ts`，提供严格类型与运行时校验。
+- 本仓库只交付桌面端：Web 客户端、Server 的 HTTP/WS 宿主与独立 CLI/TUI 发行产品均已移除。不要恢复这些入口或它们的构建脚本。
+- `web-remote-replayable` 仍是协议层的**投递语义**名称，由桌面端自带的手机远控服务使用，不代表存在 Web 客户端。
 - Main 负责窗口、原生操作、进程调度和消息转发，不承载 task/session 业务状态。
 - 每个窗口使用一个 window-scoped Local Host；本地 workspace 共享该 Host。远程 workspace 由窗口内的连接注册表管理，不另建 Desktop Remote Host。
 - 手机远控连接桌面已有 Host attachment，复用会话运行时；不为手机另起 Agent、Local Host 或远程会话。

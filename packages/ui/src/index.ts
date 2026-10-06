@@ -55,6 +55,7 @@ export {
   useReaddir,
   useSystemInfo,
   useIntranetProbe,
+  useResourceBudget,
   useTerminal,
   useSettings,
   useRecentProjects,
