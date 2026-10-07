@@ -14,8 +14,16 @@ import {
 } from "@/v4/composer/liveMetricsEstimate.js";
 
 export interface ConversationLiveMetrics {
-  /** 最近窗口内的输出速率；不足两个采样点（刚起跑/刚恢复）时为 null。 */
+  /**
+   * 窗口内的输出速率。生成中为实时值；点不够或刚起跑时为 null。
+   * 注意与 lastRate 区分：这个读数在 running=false 时为 null。
+   */
   tokensPerSecond: number | null;
+  /**
+   * 上一次生成的收尾速率。回复完成后冻结保持，下次起跑时清空——
+   * 指标条完成态用它继续显示速度，而不是退回「—」（用户反馈：完成后不该消失）。
+   */
+  lastRate: number | null;
   /** 会话累计轮数；旧 CLI 不下发 counters 时回落到窗口内计数。 */
   turns: number | null;
   /** 会话累计工具调用步数；同上。 */
@@ -56,6 +64,26 @@ export function useConversationLiveMetrics({
   const nowMs = useNowTicker(running);
   const ledgerRef = useRef<OutputTokenLedger | null>(null);
   const samplesRef = useRef<Array<{ at: number; tokens: number }>>([]);
+  // 上一次生成的收尾速率：running 落定时冻结最后一个有效读数，供完成态指标条继续显示；
+  // 新一轮起跑时清空（避免显示上一轮的速度冒充本轮）。
+  const lastRateRef = useRef<number | null>(null);
+  const prevRunningRef = useRef(running);
+
+  // 刻意在 render 阶段做状态迁移，而不是放进 effect：running 落定的那一次渲染必须**立刻**
+  // 拿到冻结值，effect 在绘制之后才跑，用户会先看到一帧「—」再跳回速度值。
+  // 迁移只在布尔翻转的那一次发生，后续渲染命中 else 分支保持原值；StrictMode 双调用
+  // 第二次看不到翻转，但值已由第一次写好，结果一致。
+  if (running !== prevRunningRef.current) {
+    if (running) {
+      lastRateRef.current = null;
+    } else {
+      // 刚收尾：冻结采样窗里最后一个有效速率。退化样本返回 null 时保留旧值语义，
+      // 由消费端决定显示占位符（首答没攒够样本的情况本就不该编一个速度）。
+      const finalRate = computeRateFromSamples(samplesRef.current);
+      if (finalRate !== null) lastRateRef.current = finalRate;
+    }
+    prevRunningRef.current = running;
+  }
 
   useEffect(() => {
     const ledger = (ledgerRef.current ??= createOutputTokenLedger());
@@ -94,5 +122,5 @@ export function useConversationLiveMetrics({
   const turns = usage?.counters?.turns ?? windowCounts?.turns ?? null;
   const steps = usage?.counters?.steps ?? windowCounts?.steps ?? null;
 
-  return { tokensPerSecond, turns, steps, running };
+  return { tokensPerSecond, lastRate: lastRateRef.current, turns, steps, running };
 }

@@ -35,17 +35,18 @@ export function ConversationLiveMetrics({
   const hasCounters = (metrics.turns ?? 0) > 0 || (metrics.steps ?? 0) > 0;
   if (!metrics.running && !hasCounters) return null;
 
+  // 完成态显示上一次生成的收尾速率（hook 冻结保持），不再退回「—」；
+  // 真正没有速率可读（首答没攒够样本 / 从未生成过）才显示占位符。
+  const displayRate = metrics.tokensPerSecond ?? (metrics.running ? null : metrics.lastRate);
   const rateLabel =
-    metrics.tokensPerSecond === null
+    displayRate === null
       ? "—"
-      : `${formatCompactTokenNumber(locale, metrics.tokensPerSecond, {
-          maximumFractionDigits: 1,
-        })}`;
+      : `${formatCompactTokenNumber(locale, displayRate, { maximumFractionDigits: 1 })}`;
 
   return (
     <div
       data-testid="conversation-live-metrics"
-      data-tps={metrics.tokensPerSecond ?? ""}
+      data-tps={displayRate ?? ""}
       data-turns={metrics.turns ?? ""}
       data-steps={metrics.steps ?? ""}
       // 轮/步是「本会话发生过多少工作」的累计量：回退（rewind）不会让它们减少，
