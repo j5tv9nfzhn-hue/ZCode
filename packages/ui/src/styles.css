@@ -2074,3 +2074,24 @@ html.zcode-reduced-motion *::after {
   transition-delay: 0ms !important;
   scroll-behavior: auto !important;
 }
+
+/*
+ * 『系统正在忙』的活体指示器豁免（本地自用分支 bugfix）。
+ *
+ * 上面的全局钳制把 animate-spin 压成「1ms 转一圈后静止」——低配机上所有加载圈/进度圈
+ * （发送键 Spinner、模型拉取、重连、工作流 running 徽标等）看起来都像坏掉的死圆圈，
+ * 用户无法区分「在忙」和「卡死」。这不是动画偏好问题：spinner 不派发任何依赖事件
+ * （不像 transitionend），每帧只是一次 GPU 合成的 SVG 旋转，在 i3-3110M 上也可忽略，
+ * 继续旋转是语义刚需。
+ *
+ * 选择器特异性 (0,2,1) 高于全局规则的 (0,1,1)，同为 !important 时取胜。
+ * 带 motion-reduce:animate-none（animation-name:none）的元素不受影响——那是
+ * OS 真正请求减少动效时的显式停止，name 不在本豁免覆盖范围内。
+ */
+html.zcode-reduced-motion .animate-spin[class],
+html.zcode-reduced-motion .animate-spin[class]::before,
+html.zcode-reduced-motion .animate-spin[class]::after {
+  animation-duration: 1s !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: infinite !important;
+}
