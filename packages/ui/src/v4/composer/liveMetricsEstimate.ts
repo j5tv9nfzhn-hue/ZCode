@@ -98,6 +98,9 @@ export function applyRowsToOutputTokenLedger(
       if (text.length === previous.textLength) continue;
       const appendedTokens = estimateTokensInTextSegment(text.slice(previous.textLength));
       previous.tokens += appendedTokens;
+      // 必须同步游标：漏了这行，下一帧会把同一段 text.slice(old..new) 再次计价，
+      // 流式期间每帧都重复计费 → TPS 系统性虚高（CI 单测第三次应用时抓到，actual 3≠2）。
+      previous.textLength = text.length;
       ledger.totalTokens += appendedTokens;
     } else {
       const tokens = estimateTokensInTextSegment(text);
