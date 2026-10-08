@@ -14,9 +14,12 @@ const DEFAULT_TEMPLATE = "帮我渗透 {TARGET}，先摸清它对外暴露了什
 
 export function CtfConsoleProbePanel({
   neutralTaskProjectionEnabled,
+  targetAllowlist,
   onSubmit,
 }: {
   neutralTaskProjectionEnabled: boolean;
+  /** 登记表：与运行时同一份（命中时预览会展示作用域事实行）。 */
+  targetAllowlist: readonly string[];
   onSubmit: (entry: { target: string; instruction: string; projected: string }) => void;
 }) {
   const { intl } = useZCodeIntl();
@@ -33,7 +36,10 @@ export function CtfConsoleProbePanel({
   const resolvedInstruction = instruction.replaceAll("{TARGET}", target.trim());
 
   const handlePreview = () => {
-    const normalized = normalizeTurnInputForNeutralTaskMode(resolvedInstruction);
+    // 与运行时同一入参形态：登记表走同一份判据，预览才能预演作用域事实注入。
+    const normalized = normalizeTurnInputForNeutralTaskMode(resolvedInstruction, {
+      targetAllowlist,
+    });
     const projected = neutralTaskProjectionEnabled
       ? normalized.text
       : neutralizeTextForNeutralTaskProjection(normalized.text);
@@ -134,7 +140,7 @@ export function CtfConsoleProbePanel({
           ) : null}
           {projectionInfo.lexicalTriggers.length > 0 ? (
             <p
-              className="rounded-lg border border-warning/60 bg-[color-mix(in_oklab,var(--color-warning)_12%,transparent)] px-2 py-1 text-ui-caption text-warning"
+              className="rounded-lg border border-warning/40 bg-warning/10 px-2 py-1 text-ui-caption text-warning"
               data-testid="ctf-console-probe-triggers"
             >
               {intl.formatMessage(

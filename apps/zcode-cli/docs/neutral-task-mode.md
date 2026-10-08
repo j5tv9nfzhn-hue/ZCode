@@ -423,6 +423,7 @@ HTTP 客户端（`http_request` / `http_batch`），脚本不拦截模型的工�
 | --- | --- | --- |
 | `AppSettings.customSystemPrompt` | `shared/src/protocol.ts`、`validationAppSettings.ts` | 非空时整段替换 context builder 稳定 body（`AgentRuntimeConfig.systemPrompt → ContextBuilder.customSystemPrompt`，既有语义）；空串经 `normalizeSettingsPatch` 归一成 undefined = 恢复默认 |
 | `AppSettings.neutralTaskProjection` | 同上（默认 false） | 投影开关 |
+| `AppSettings.neutralTaskTargetAllowlist` | 同上（默认 `[]`） | 授权作用域登记表（CTF Console）：写入侧 `settingService.update` 用 `normalizeNeutralTaskTargetAllowlist` 清洗并把 dropped 打到服务日志；runtime preferences result schema（`.strict()`，两侧同步）以 optional 透传，缺席即空表；`SessionStartupPreferences` 同名可选字段，**workflow_child 不继承**（与投影开关同语义）；session 创建边界一次写入 `runtimeConfig.neutralTaskTargetAllowlist` |
 
 状态所有者：`packages/services/src/setting`（setting.json，`~/.zcode/v2/`）。UI 通过
 `useSettings().update` 写，Host 在 session 创建边界通过
@@ -437,6 +438,13 @@ HTTP 客户端（`http_request` / `http_batch`），脚本不拦截模型的工�
 设置页：新增「系统提示词」分区（`systemPrompt` 分区 id，
 `ui/src/settings/SystemPromptSettingsSection.tsx`）：自定义提示词 textarea
 （保存/恢复默认）+ 中性任务投影开关。i18n 双语 key 齐备。
+
+登记表 UI 入口：CTF Console 设置分区（`ui/src/settings/CtfConsoleConfigPanel.tsx`）
+「授权作用域登记表」textarea（一行一条，`settings.ctfConsole.allowlist.*` 双语
+key），保存前 UI 侧先清洗并展示丢弃项，保存走
+`save_neutral_task_target_allowlist` 设置动作；textarea 与保存按钮随投影开关
+禁用（投影关闭时请求层不消费登记表）。试金石面板（`CtfConsoleProbePanel`）与
+运行时吃同一份登记表，预览可预演作用域事实注入。
 
 ## 4. 被有意排除的方案
 

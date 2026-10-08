@@ -689,6 +689,7 @@ export function SettingsPage({
   const projectionDiffCaptureEnabled = sharedSettings?.neutralTaskProjectionDiffCapture === true;
   const projectionDiffCaptureAssistantEnabled =
     sharedSettings?.neutralTaskProjectionDiffCaptureAssistant === true;
+  const neutralTaskTargetAllowlist = sharedSettings?.neutralTaskTargetAllowlist ?? [];
   const nativeSearchEnhancementsEnabled = sharedSettings?.nativeSearchEnhancementsEnabled !== false;
   const askUserQuestionAutoResolutionEnabled =
     sharedSettings?.askUserQuestionAutoResolutionEnabled !== false;
@@ -1042,6 +1043,20 @@ export function SettingsPage({
           resultSource: "shared_settings",
           stateAfter: enabled ? "enabled" : "disabled",
         },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleNeutralTaskTargetAllowlistSave = useCallback(
+    async (entries: readonly string[]) => {
+      // 入参已是 UI 侧清洗后的归一结果；设置层会用同一份 shared 判据再洗一次
+      // （远程 Host 可能不经过本机 UI，两侧都要能兜住）。
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "save_neutral_task_target_allowlist",
+        trigger: "button",
+        operation: () => updateSharedSettings({ neutralTaskTargetAllowlist: [...entries] }),
+        completed: { resultSource: "shared_settings" },
       });
     },
     [updateSharedSettings],
@@ -1952,6 +1967,7 @@ export function SettingsPage({
                             projectionDiffCaptureAssistantEnabled={
                               projectionDiffCaptureAssistantEnabled
                             }
+                            targetAllowlist={neutralTaskTargetAllowlist}
                             workspaceIdentity={activeWorkspaceIdentity ?? undefined}
                             workspacePath={activeWorkspacePath ?? undefined}
                             onAssistantCoTPrefillEnabledChange={
@@ -1963,6 +1979,7 @@ export function SettingsPage({
                             onProjectionDiffCaptureAssistantChange={
                               handleProjectionDiffCaptureAssistantChange
                             }
+                            onTargetAllowlistSave={handleNeutralTaskTargetAllowlistSave}
                           />
                         ) : activeSection === "plugin" ? (
                           <PluginsSection

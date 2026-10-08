@@ -35,6 +35,7 @@ export function CtfConsoleSection({
   unfilteredFullOutputEnabled,
   projectionDiffCaptureEnabled,
   projectionDiffCaptureAssistantEnabled,
+  targetAllowlist,
   workspacePath,
   workspaceIdentity,
   onNeutralTaskProjectionChange,
@@ -42,12 +43,15 @@ export function CtfConsoleSection({
   onUnfilteredFullOutputChange,
   onProjectionDiffCaptureChange,
   onProjectionDiffCaptureAssistantChange,
+  onTargetAllowlistSave,
 }: {
   neutralTaskProjectionEnabled: boolean;
   assistantCoTPrefillEnabled: boolean;
   unfilteredFullOutputEnabled: boolean;
   projectionDiffCaptureEnabled: boolean;
   projectionDiffCaptureAssistantEnabled: boolean;
+  /** 授权作用域登记表（已清洗的持久化值）。 */
+  targetAllowlist: readonly string[];
   workspacePath?: string;
   workspaceIdentity?: string;
   onNeutralTaskProjectionChange: (enabled: boolean) => Promise<void>;
@@ -55,6 +59,7 @@ export function CtfConsoleSection({
   onUnfilteredFullOutputChange: (enabled: boolean) => Promise<void>;
   onProjectionDiffCaptureChange: (enabled: boolean) => Promise<void>;
   onProjectionDiffCaptureAssistantChange: (enabled: boolean) => Promise<void>;
+  onTargetAllowlistSave: (entries: readonly string[]) => Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
   const services = useServices();
@@ -187,10 +192,13 @@ export function CtfConsoleSection({
         projectionDiffCaptureAssistantEnabled={projectionDiffCaptureAssistantEnabled}
         onProjectionDiffCaptureChange={onProjectionDiffCaptureChange}
         onProjectionDiffCaptureAssistantChange={onProjectionDiffCaptureAssistantChange}
+        targetAllowlist={targetAllowlist}
+        onTargetAllowlistSave={onTargetAllowlistSave}
       />
 
       <CtfConsoleProbePanel
         neutralTaskProjectionEnabled={neutralTaskProjectionEnabled}
+        targetAllowlist={targetAllowlist}
         onSubmit={({ target, instruction, projected }) => {
           const now = Date.now();
           appendEntries([

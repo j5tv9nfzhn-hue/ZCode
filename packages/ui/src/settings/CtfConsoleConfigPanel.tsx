@@ -1,12 +1,17 @@
+import { useCallback, useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch.js";
 import {
+  normalizeNeutralTaskTargetAllowlist,
   TID_SETTINGS_COT_PREFILL_SWITCH,
   TID_SETTINGS_NEUTRAL_TASK_PROJECTION_SWITCH,
+  TID_SETTINGS_NEUTRAL_TASK_TARGET_ALLOWLIST_TEXTAREA,
   TID_SETTINGS_PROJECTION_DIFF_CAPTURE_ASSISTANT_SWITCH,
   TID_SETTINGS_PROJECTION_DIFF_CAPTURE_SWITCH,
   TID_SETTINGS_UNFILTERED_OUTPUT_SWITCH,
 } from "@zcode/shared";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { Button } from "@/components/ui/button.js";
+import { SettingsFormTextarea } from "@/settings/SettingsFormTextarea.js";
 import { SettingsGroupCard, SettingsRow } from "@/settings/SettingsPageParts.js";
 
 export function CtfConsoleConfigPanel({
@@ -15,24 +20,50 @@ export function CtfConsoleConfigPanel({
   unfilteredFullOutputEnabled,
   projectionDiffCaptureEnabled,
   projectionDiffCaptureAssistantEnabled,
+  targetAllowlist,
   onNeutralTaskProjectionChange,
   onAssistantCoTPrefillEnabledChange,
   onUnfilteredFullOutputChange,
   onProjectionDiffCaptureChange,
   onProjectionDiffCaptureAssistantChange,
+  onTargetAllowlistSave,
 }: {
   neutralTaskProjectionEnabled: boolean;
   assistantCoTPrefillEnabled: boolean;
   unfilteredFullOutputEnabled: boolean;
   projectionDiffCaptureEnabled: boolean;
   projectionDiffCaptureAssistantEnabled: boolean;
+  /** 持久化的授权作用域登记表（已清洗）。 */
+  targetAllowlist: readonly string[];
   onNeutralTaskProjectionChange: (enabled: boolean) => Promise<void>;
   onAssistantCoTPrefillEnabledChange: (enabled: boolean) => Promise<void>;
   onUnfilteredFullOutputChange: (enabled: boolean) => Promise<void>;
   onProjectionDiffCaptureChange: (enabled: boolean) => Promise<void>;
   onProjectionDiffCaptureAssistantChange: (enabled: boolean) => Promise<void>;
+  /** 保存登记表：入参是 textarea 的逐行原始输入，清洗由本组件与设置层共同兜底。 */
+  onTargetAllowlistSave: (entries: readonly string[]) => Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
+  const [allowlistDraft, setAllowlistDraft] = useState(targetAllowlist.join("\n"));
+  const [savingAllowlist, setSavingAllowlist] = useState(false);
+  const [droppedEntries, setDroppedEntries] = useState<readonly string[]>([]);
+
+  // 设置写入成功后（含其他窗口同步）把草稿拉回持久化值。
+  useEffect(() => {
+    setAllowlistDraft(targetAllowlist.join("\n"));
+  }, [targetAllowlist]);
+
+  const handleSaveAllowlist = useCallback(async () => {
+    setSavingAllowlist(true);
+    try {
+      const normalized = normalizeNeutralTaskTargetAllowlist(allowlistDraft.split(/\r?\n/));
+      setDroppedEntries(normalized.dropped);
+      // 与设置层同清洗判据：存归一结果；丢弃项已在本地与日志两侧上报。
+      await onTargetAllowlistSave(normalized.entries);
+    } finally {
+      setSavingAllowlist(false);
+    }
+  }, [allowlistDraft, onTargetAllowlistSave]);
   return (
     <SettingsGroupCard>
       <SettingsRow
@@ -121,6 +152,45 @@ export function CtfConsoleConfigPanel({
           />
         }
       />
+      <div className="space-y-1.5" data-testid="ctf-console-config-allowlist">
+        <span className="text-ui-base text-foreground">
+          {intl.formatMessage({ id: "settings.ctfConsole.allowlist.label" })}
+        </span>
+        <p className="text-ui-caption text-foreground-subtle">
+          {intl.formatMessage({ id: "settings.ctfConsole.allowlist.description" })}
+        </p>
+        <SettingsFormTextarea
+          rows={5}
+          value={allowlistDraft}
+          placeholder={intl.formatMessage({ id: "settings.ctfConsole.allowlist.placeholder" })}
+          data-testid={TID_SETTINGS_NEUTRAL_TASK_TARGET_ALLOWLIST_TEXTAREA}
+          // 登记表随投影开关走：投影关闭时请求层根本不消费登记表，
+          // 编辑态会造成「已生效」错觉，直接禁用并沿用 diff 开关的联动语义。
+          disabled={!neutralTaskProjectionEnabled}
+          onChange={(event) => setAllowlistDraft(event.target.value)}
+        />
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="lg"
+            disabled={!neutralTaskProjectionEnabled || savingAllowlist}
+            onClick={() => void handleSaveAllowlist()}
+          >
+            {intl.formatMessage({ id: "settings.ctfConsole.allowlist.save" })}
+          </Button>
+        </div>
+        {droppedEntries.length > 0 ? (
+          <p
+            className="rounded-lg border border-warning/40 bg-warning/10 px-2 py-1 text-ui-caption text-warning"
+            data-testid="ctf-console-config-allowlist-dropped"
+          >
+            {intl.formatMessage(
+              { id: "settings.ctfConsole.allowlist.dropped" },
+              { entries: droppedEntries.join("、") },
+            )}
+          </p>
+        ) : null}
+      </div>
     </SettingsGroupCard>
   );
 }

@@ -1714,6 +1714,8 @@ export const zcodeSessionRuntimePreferencesResultSchema = z
     customSystemPrompt: nonEmptyString.optional(),
     // 中性任务投影；缺席即关闭（fail-closed），保持旧 Host 行为不变。
     neutralTaskProjection: z.boolean().optional(),
+    // 授权作用域登记表：缺席即空表（不注入作用域事实，也不删用户词汇）。
+    neutralTaskTargetAllowlist: z.array(z.string()).optional(),
     // Assistant CoT Prefill；缺席即关闭（fail-closed）。
     assistantCoTPrefillEnabled: z.boolean().optional(),
     // 完整输出（不下发 maxOutputTokens）；缺席即关闭（fail-closed）。

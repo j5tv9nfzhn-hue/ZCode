@@ -153,6 +153,12 @@ interface SessionStartupPreferences {
   customSystemPrompt?: string;
   /** 中性任务投影：provider 请求投影层改写叙事文本与工具名；缺席/false 即关闭。 */
   neutralTaskProjection: boolean;
+  /**
+   * 授权作用域登记表：命中时请求注入作用域事实（登记 = 使用者断言权限，责任在
+   * 使用者）。缺席即空表；workflow_child 不继承（与投影开关同语义，见 resolve
+   * inherit 分支）。
+   */
+  neutralTaskTargetAllowlist?: readonly string[];
   /** Assistant CoT Prefill：请求末尾预置 assistant 思考前缀；缺席/false 即关闭。 */
   assistantCoTPrefillEnabled: boolean;
   /** 完整输出：不下发 maxOutputTokens；缺席/false 即关闭。 */
@@ -3291,12 +3297,14 @@ async function resolveSessionStartupPreferences(
       ? { customSystemPrompt: runtimePreferences.customSystemPrompt }
       : {}),
     neutralTaskProjection: runtimePreferences.neutralTaskProjection === true,
+    ...(runtimePreferences.neutralTaskTargetAllowlist?.length
+      ? { neutralTaskTargetAllowlist: runtimePreferences.neutralTaskTargetAllowlist }
+      : {}),
     assistantCoTPrefillEnabled: runtimePreferences.assistantCoTPrefillEnabled === true,
     unfilteredFullOutputEnabled: runtimePreferences.unfilteredFullOutputEnabled === true,
-      neutralTaskProjectionDiffCapture:
-        runtimePreferences.neutralTaskProjectionDiffCapture === true,
-      neutralTaskProjectionDiffCaptureAssistant:
-        runtimePreferences.neutralTaskProjectionDiffCaptureAssistant === true,
+    neutralTaskProjectionDiffCapture: runtimePreferences.neutralTaskProjectionDiffCapture === true,
+    neutralTaskProjectionDiffCaptureAssistant:
+      runtimePreferences.neutralTaskProjectionDiffCaptureAssistant === true,
     resolveInitialBashShellSelection: async () => {
       const executionPreferences = await requestSessionRuntimePreferences(
         context,
@@ -3394,6 +3402,11 @@ async function createRecord(
       // 中性任务投影是请求投影层策略，同样按 session 固定（见 core
       // runtime/helpers/neutral-task-projection.ts 的不变量说明）。
       neutralTaskProjection: startupPreferences.neutralTaskProjection,
+      // 授权作用域登记表同理按 session 固定：只在命中时注入作用域事实，
+      // 未命中不声明任何授权（core helpers/neutral-task-projection.ts）。
+      ...(startupPreferences.neutralTaskTargetAllowlist?.length
+        ? { neutralTaskTargetAllowlist: startupPreferences.neutralTaskTargetAllowlist }
+        : {}),
       // Assistant CoT Prefill 同理：按 session 固定，仅影响请求组装，不进入历史。
       assistantCoTPrefillEnabled: startupPreferences.assistantCoTPrefillEnabled,
       // 完整输出：按 session 固定，只影响单次请求参数。

@@ -2179,6 +2179,14 @@ const enUS: Record<string, string> = {
     "Target is registered in your authorized scope: the request states that fact, and your ownership stays private.",
   "settings.ctfConsole.probe.lexicalTriggers":
     "The request contains attack vocabulary ({terms}) — capability-preserving mode keeps it; testing permission is yours to judge.",
+  "settings.ctfConsole.allowlist.label": "Authorized scope registry",
+  "settings.ctfConsole.allowlist.description":
+    "One entry per line; only exact IPs or full hostnames are accepted (their subdomains match automatically). Registering asserts you are authorized to test that target — the permission responsibility is yours. Matched targets get a scope fact in the request; your ownership stays private. Unregistered targets are sent verbatim with no authorization claim. Wildcards, CIDR subnets, credential-like strings and prose descriptions are dropped on save.",
+  "settings.ctfConsole.allowlist.placeholder":
+    "203.0.113.10\nlab.example.com\nhttps://api.example.com",
+  "settings.ctfConsole.allowlist.save": "Save registry",
+  "settings.ctfConsole.allowlist.dropped":
+    "These entries are not an exact hostname / IP and were ignored: {entries}",
   "settings.ctfConsole.log.title": "Live logs",
   "settings.ctfConsole.log.live": "session events connected",
   "settings.ctfConsole.log.offline": "offline (console-local events only)",

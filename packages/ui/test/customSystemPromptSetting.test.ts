@@ -32,6 +32,23 @@ test("settings patch schema accepts the new fields as optional", () => {
   assert.equal(appSettingsPatchSchema.parse({}).neutralTaskProjection, undefined);
 });
 
+test("neutral task target allowlist defaults to empty and persists as an array", () => {
+  const defaults = appSettingsSchema.parse({});
+  assert.deepEqual(defaults.neutralTaskTargetAllowlist, []);
+
+  const configured = appSettingsSchema.parse({
+    neutralTaskTargetAllowlist: ["203.0.113.10", "lab.example.com"],
+  });
+  assert.deepEqual(configured.neutralTaskTargetAllowlist, ["203.0.113.10", "lab.example.com"]);
+
+  // patch 侧 optional：缺席即不改动；命中时原样透传（逐条清洗在写入侧归一函数）。
+  const patch = appSettingsPatchSchema.parse({
+    neutralTaskTargetAllowlist: ["lab.example.com"],
+  });
+  assert.deepEqual(patch.neutralTaskTargetAllowlist, ["lab.example.com"]);
+  assert.equal(appSettingsPatchSchema.parse({}).neutralTaskTargetAllowlist, undefined);
+});
+
 test("clearing the custom system prompt normalizes to undefined (restore default)", () => {
   assert.equal(normalizeSettingsPatch({ customSystemPrompt: "" }).customSystemPrompt, undefined);
   assert.equal(

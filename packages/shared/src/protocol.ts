@@ -327,6 +327,14 @@ export interface AppSettings {
   customSystemPrompt?: string;
   /** 中性任务投影：provider 请求投影层改写叙事文本与工具名；默认关闭，新建会话生效。 */
   neutralTaskProjection?: boolean;
+  /**
+   * 授权作用域登记表（CTF Console）：确切 IP / 完整主机名（含其子域），一行一条。
+   * 登记即使用者断言有权限（归属不必是自有资产，责任在使用者）；命中时请求里
+   * 注入一句作用域事实，未命中不声明任何授权。写入侧由 settingService 用
+   * `normalizeNeutralTaskTargetAllowlist` 清洗（wildcard / 网段 / 凭据 / 中文口语
+   * 丢弃），匹配侧（shared neutral-task-scope）同样兜底清洗。
+   */
+  neutralTaskTargetAllowlist?: string[];
   /** Assistant CoT Prefill：请求末尾预置 assistant 思考前缀；默认关闭，新建会话生效。 */
   assistantCoTPrefillEnabled?: boolean;
   /** 完整输出：请求不下发 maxOutputTokens，由 provider 按模型上限生成；默认关闭。 */

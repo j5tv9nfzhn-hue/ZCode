@@ -2046,6 +2046,13 @@ const zhCN: Record<string, string> = {
     "目标已登记在授权作用域内：请求中已声明该事实，你的归属信息不外泄。",
   "settings.ctfConsole.probe.lexicalTriggers":
     "请求中含攻击语义词：{terms}（能力保持模式不删除它们，由你判断测试权限）",
+  "settings.ctfConsole.allowlist.label": "授权作用域登记表",
+  "settings.ctfConsole.allowlist.description":
+    "一行一条，只认确切 IP 或完整主机名（其子域自动命中）。登记即断言你已获得该目标的测试授权，权限责任由你承担；命中时请求会声明作用域事实，你的归属信息不外泄。未登记目标同样原文发送，但不声明任何授权。通配符、网段（CIDR）、疑似凭据与中文描述登记时即丢弃。",
+  "settings.ctfConsole.allowlist.placeholder":
+    "203.0.113.10\nlab.example.com\nhttps://api.example.com",
+  "settings.ctfConsole.allowlist.save": "保存登记表",
+  "settings.ctfConsole.allowlist.dropped": "以下写法不是确切的主机名 / IP，已忽略：{entries}",
   "settings.ctfConsole.log.title": "实时日志",
   "settings.ctfConsole.log.live": "会话事件已连接",
   "settings.ctfConsole.log.offline": "离线（仅控制台本地事件）",

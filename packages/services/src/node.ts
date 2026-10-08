@@ -2270,6 +2270,9 @@ export function createLocalServices(options: {
                 ? { customSystemPrompt: settings.customSystemPrompt }
                 : {}),
               neutralTaskProjection: settings.neutralTaskProjection === true,
+              ...(settings.neutralTaskTargetAllowlist?.length
+                ? { neutralTaskTargetAllowlist: settings.neutralTaskTargetAllowlist }
+                : {}),
               assistantCoTPrefillEnabled: settings.assistantCoTPrefillEnabled === true,
               unfilteredFullOutputEnabled: settings.unfilteredFullOutputEnabled === true,
               neutralTaskProjectionDiffCapture: settings.neutralTaskProjectionDiffCapture === true,
