@@ -6,6 +6,12 @@ interface ModelToolCallValidationContext {
   model: Pick<Model, "providerId" | "modelId">;
   source: string;
   traceContext: TraceContext;
+  /**
+   * 中性任务投影的入站还原：provider 看到的是投影后的工具名，registry
+   * 只认规范名，所以在 normalize 之前先还原。仅在开启
+   * AgentRuntimeConfig.neutralTaskProjection 的会话里传入。
+   */
+  restoreProjectedToolCallName?: (name: string) => string;
 }
 
 export function normalizeModelToolCallsForRuntime(
@@ -16,15 +22,20 @@ export function normalizeModelToolCallsForRuntime(
     return undefined;
   }
 
-  return toolCalls.map((toolCall, index) => ({
-    ...toolCall,
-    name: normalizeRuntimeModelToolName(toolCall.name, {
-      ...context,
-      providerExecuted: toolCall.providerExecuted,
-      toolCallId: toolCall.id,
-      toolCallIndex: index,
-    }),
-  }));
+  return toolCalls.map((toolCall, index) => {
+    const restoredName = context.restoreProjectedToolCallName
+      ? context.restoreProjectedToolCallName(toolCall.name)
+      : toolCall.name;
+    return {
+      ...toolCall,
+      name: normalizeRuntimeModelToolName(restoredName, {
+        ...context,
+        providerExecuted: toolCall.providerExecuted,
+        toolCallId: toolCall.id,
+        toolCallIndex: index,
+      }),
+    };
+  });
 }
 
 export function requireRuntimeToolCallName(

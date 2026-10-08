@@ -40,6 +40,7 @@ import {
   truncateCompactSummaryRequestEntriesAfterPromptTooLong,
   projectCompactMediaForRetry,
   projectMessagesForModelMediaPolicy,
+  projectModelRequestForNeutralTaskProjection,
   logCompactMediaRetryProjection,
   readApprovedPlanFileReferenceEntry,
 } from "../helpers/index.js";
@@ -381,10 +382,22 @@ async function compactActiveConversationImpl(
         const modelStartedAt = Date.now();
         const networkEventStartIndex = events.length;
         const compactSummaryMaxOutputTokens = capCompactSummaryMaxOutputTokens(compactModel);
+        // 压缩请求也要过中性投影（2026-10-08 实测缺陷）：compact 走
+        // runCompactSummaryModelRequest，不经过 runModelTextRequest，因此若不在此
+        // 投影，被压缩的历史（含用户原话与连贯任务叙事）会原样发给 provider，
+        // 压缩环节本身可能触发拒绝；摘要内容里的攻击语义词也会带入下一轮。
+        // 事件仍记录未投影的 recordable 数组，保持既有可观测语义。
+        const compactProjection =
+          this.config.neutralTaskProjection === true
+            ? projectModelRequestForNeutralTaskProjection({
+                messages: projectedRequestMessages,
+                tools: compactTools,
+              })
+            : undefined;
         const compactModelRequest = {
           abortSignal: options.abortSignal,
           maxOutputTokens: compactSummaryMaxOutputTokens,
-          messages: projectedRequestMessages,
+          messages: compactProjection?.messages ?? projectedRequestMessages,
           metadata: traceContextToLogContext(modelTraceContext),
           modelRequestSessionType: resolveModelRequestSessionTypeFromTaskType(this.config.taskType),
           modelCall: {
@@ -400,7 +413,7 @@ async function compactActiveConversationImpl(
           // content block 提交前仍可丢弃并 HTTP fallback，block end 后则禁止任何重放。
           preserveProviderStreamBoundaries: true,
           traceContext: modelTraceContext,
-          tools: compactTools,
+          tools: compactProjection?.tools ?? compactTools,
           refreshRuntimeHeadersBeforeAttempt: createRefreshRuntimeHeadersBeforeModelAttempt(this, {
             abortSignal: options.abortSignal,
             model: compactModel,

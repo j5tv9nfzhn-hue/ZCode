@@ -14,7 +14,11 @@ import {
   projectMessagesWithMediaAttachmentPaths,
   projectMessagesForInputFormat,
   projectMessagesForMediaBudget,
+  projectModelRequestForNeutralTaskProjection,
+  applyAssistantCoTPrefill,
+  restoreToolCallNameForNeutralTaskProjection,
   readRawFinishReason,
+  resolveModelMaxOutputTokens,
 } from "../helpers/index.js";
 import type { RunModelTextRequestOptions, RuntimeModelTextResult } from "../types.js";
 import type { AgentRuntimeInternal } from "../internal.js";
@@ -70,6 +74,26 @@ export async function runModelTextRequest(
     mediaProjection.messages === options.messages
       ? options
       : { ...options, messages: mediaProjection.messages };
+  // 中性任务投影：只在「即将发往 provider 的请求」这一层改写叙事文本与工具名，
+  // canonical 历史 / 落盘 transcript / UI 展示不变（不变量见
+  // helpers/neutral-task-projection.ts）。入站 tool_call.name 在下面的
+  // normalizeModelToolCallsForRuntime 处还原为注册表规范名。
+  const neutralTaskProjectionEnabled = this.config.neutralTaskProjection === true;
+  const neutralProjection = neutralTaskProjectionEnabled
+    ? projectModelRequestForNeutralTaskProjection({
+        messages: projectedOptions.messages,
+        tools: projectedOptions.tools,
+      })
+    : undefined;
+  if (neutralProjection) {
+    this.logger?.debug("Neutral task projection applied", {
+      ...traceContextToLogContext(projectedOptions.traceContext),
+      event: "model.request.neutral_task_projection",
+      messageCount: neutralProjection.messages.length,
+      module: "core.runtime",
+      toolCount: neutralProjection.tools.length,
+    });
+  }
   logModelRequestMediaSummary(this.logger, projectedOptions.traceContext, {
     incomingMessages: options.messages,
     mediaProjection,
@@ -116,20 +140,33 @@ export async function runModelTextRequest(
     streamIdleTimeoutRetryNumber: projectedOptions.streamRecovery?.retryNumber,
     streamRecovery: projectedOptions.streamRecovery,
   };
+    // 完整输出只解除本地上下文预算的截断；字段本身必须下发（adapter 必填校验）。
+  // 详见 helpers/model-output-budget.ts 的不变量。
+  const effectiveMaxOutputTokens = resolveModelMaxOutputTokens({
+    unfilteredFullOutputEnabled: this.config.unfilteredFullOutputEnabled === true,
+    budgetedMaxOutputTokens: projectedOptions.maxOutputTokens,
+    declaredMaxOutputTokens: model.optionSpecs.maxOutputTokens.max,
+  });
   const modelRequest = {
-    messages: projectedOptions.messages,
-    tools: projectedOptions.tools,
+    messages: (() => {
+      const neutralizedMessages = neutralProjection?.messages ?? projectedOptions.messages;
+      // CoT prefill 独立于中性投影：中性投影解决 user 侧的意图判定，
+      // prefill 解决 assistant 侧的「要不要开始」姿态。两者都只在请求投影
+      // 层生效，canonical 历史不受影响。
+      return this.config.assistantCoTPrefillEnabled === true
+        ? applyAssistantCoTPrefill(neutralizedMessages)
+        : neutralizedMessages;
+    })(),
+    tools: neutralProjection?.tools ?? projectedOptions.tools,
     abortSignal: projectedOptions.abortSignal,
-    ...(projectedOptions.maxOutputTokens !== undefined
-      ? { options: { maxOutputTokens: projectedOptions.maxOutputTokens } }
-      : {}),
+    options: { maxOutputTokens: effectiveMaxOutputTokens },
   };
 
   this.logger?.debug(
     "Model request token limits",
     modelRequestTokenLimitLogContext({
       contextWindow: model.properties.contextWindow,
-      maxOutputTokens: projectedOptions.maxOutputTokens,
+      maxOutputTokens: effectiveMaxOutputTokens,
       modelContextBudgetStrategy: this.config.modelContextBudgetStrategy,
       traceContext: projectedOptions.traceContext,
     }),
@@ -147,6 +184,9 @@ export async function runModelTextRequest(
       model: executionModelSelection,
       source: "generateText",
       traceContext: projectedOptions.traceContext,
+      ...(neutralTaskProjectionEnabled
+        ? { restoreProjectedToolCallName: restoreToolCallNameForNeutralTaskProjection }
+        : {}),
     });
     return {
       ...result,
@@ -382,6 +422,9 @@ export async function runModelTextRequest(
               model: executionModelSelection,
               source: "streamText",
               traceContext: options.traceContext,
+              ...(neutralTaskProjectionEnabled
+                ? { restoreProjectedToolCallName: restoreToolCallNameForNeutralTaskProjection }
+                : {}),
             }) ?? [];
           if (!toolCall) {
             break;

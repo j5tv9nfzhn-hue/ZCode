@@ -2264,6 +2264,14 @@ export function createLocalServices(options: {
               nativeSearchEnhancementsEnabled: settings.nativeSearchEnhancementsEnabled !== false,
               memoryEnabled: settings.memoryEnabled === true,
               modelContextBudgetStrategy,
+              // 自定义系统提示词整段替换 context builder 的稳定 body；
+              // 清空（空串）后设置层已归一成 undefined，这里就是缺席语义。
+              ...(settings.customSystemPrompt
+                ? { customSystemPrompt: settings.customSystemPrompt }
+                : {}),
+              neutralTaskProjection: settings.neutralTaskProjection === true,
+              assistantCoTPrefillEnabled: settings.assistantCoTPrefillEnabled === true,
+              unfilteredFullOutputEnabled: settings.unfilteredFullOutputEnabled === true,
               // user-execution 只消费 Shell；共享默认策略是统一 result schema 的兼容占位，
               // 不会覆盖 runtime-materialization 阶段已经固定的 strategy。
               ...(scope === "user-execution" && settings.integratedTerminalShell

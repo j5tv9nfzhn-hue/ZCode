@@ -269,6 +269,12 @@ export function createRemoteWorkspaceServiceCollection(params: {
               nativeSearchEnhancementsEnabled: settings.nativeSearchEnhancementsEnabled !== false,
               memoryEnabled: settings.memoryEnabled === true,
               modelContextBudgetStrategy,
+              ...(settings.customSystemPrompt
+                ? { customSystemPrompt: settings.customSystemPrompt }
+                : {}),
+              neutralTaskProjection: settings.neutralTaskProjection === true,
+              assistantCoTPrefillEnabled: settings.assistantCoTPrefillEnabled === true,
+              unfilteredFullOutputEnabled: settings.unfilteredFullOutputEnabled === true,
               // remote workspace 与本地 Host 保持同一 scope 边界，首次执行不得再次等待 client config。
               ...(request.scope === "user-execution" && settings.integratedTerminalShell
                 ? { integratedTerminalShell: settings.integratedTerminalShell }

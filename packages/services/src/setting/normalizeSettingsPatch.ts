@@ -24,6 +24,17 @@ export function normalizeSettingsPatch(patch: Partial<AppSettings>): Partial<App
       trimmedTerminalFontFamily.length > 0 ? trimmedTerminalFontFamily : undefined;
   }
 
+  if (
+    "customSystemPrompt" in normalizedPatch &&
+    typeof normalizedPatch.customSystemPrompt === "string"
+  ) {
+    // 清空自定义系统提示词表示恢复内置默认。RPC 传输会吞掉 undefined，
+    // 这里把纯空白归一成 undefined，否则旧提示词会一直留在 setting.json。
+    const trimmedCustomSystemPrompt = normalizedPatch.customSystemPrompt.trim();
+    normalizedPatch.customSystemPrompt =
+      trimmedCustomSystemPrompt.length > 0 ? trimmedCustomSystemPrompt : undefined;
+  }
+
   if ("integratedTerminalShell" in normalizedPatch) {
     const selection = normalizedPatch.integratedTerminalShell;
     if (selection?.mode === "auto") {

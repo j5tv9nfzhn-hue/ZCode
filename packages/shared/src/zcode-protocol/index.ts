@@ -1710,6 +1710,14 @@ export const zcodeSessionRuntimePreferencesResultSchema = z
     modelContextBudgetStrategy: zcodeModelContextBudgetStrategySchema.default(
       DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
     ),
+    // 用户自定义系统提示词；缺席（旧 Host / 未设置）表示使用内置默认。
+    customSystemPrompt: nonEmptyString.optional(),
+    // 中性任务投影；缺席即关闭（fail-closed），保持旧 Host 行为不变。
+    neutralTaskProjection: z.boolean().optional(),
+    // Assistant CoT Prefill；缺席即关闭（fail-closed）。
+    assistantCoTPrefillEnabled: z.boolean().optional(),
+    // 完整输出（不下发 maxOutputTokens）；缺席即关闭（fail-closed）。
+    unfilteredFullOutputEnabled: z.boolean().optional(),
   })
   .strict();
 export type ZCodeSessionRuntimePreferencesResult = z.infer<

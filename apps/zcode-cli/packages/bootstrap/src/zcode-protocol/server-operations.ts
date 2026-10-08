@@ -145,6 +145,18 @@ interface SessionStartupPreferences {
   modelContextBudgetStrategy: ZCodeModelContextBudgetStrategy;
   nativeSearchEnhancementsEnabled: boolean;
   resolveInitialBashShellSelection: () => Promise<ExecutionShellSelection | undefined>;
+  /**
+   * 用户自定义系统提示词（Host settings → session/requestRuntimePreferences）。
+   * 非空时整段替换 context builder 的稳定 body；workflow_child 继承路径恒为
+   * 缺席——子代理有自己的身份（workflowActor），不继承用户人设。
+   */
+  customSystemPrompt?: string;
+  /** 中性任务投影：provider 请求投影层改写叙事文本与工具名；缺席/false 即关闭。 */
+  neutralTaskProjection: boolean;
+  /** Assistant CoT Prefill：请求末尾预置 assistant 思考前缀；缺席/false 即关闭。 */
+  assistantCoTPrefillEnabled: boolean;
+  /** 完整输出：不下发 maxOutputTokens；缺席/false 即关闭。 */
+  unfilteredFullOutputEnabled: boolean;
 }
 
 type SessionStartupPreferencesSource =
@@ -3225,6 +3237,9 @@ async function requestSessionRuntimePreferences(
         memoryEnabled: false,
         modelContextBudgetStrategy: DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
         nativeSearchEnhancementsEnabled: true,
+        neutralTaskProjection: false,
+        assistantCoTPrefillEnabled: false,
+        unfilteredFullOutputEnabled: false,
       };
     }
     throw error;
@@ -3243,6 +3258,11 @@ async function resolveSessionStartupPreferences(
       memoryEnabled: source.parent.memoryEnabled,
       modelContextBudgetStrategy: DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
       nativeSearchEnhancementsEnabled: source.parent.nativeSearchEnhancementsEnabled,
+      // workflow_child 继承父会话的工具面，但不继承用户人设与请求投影策略：
+      // 身份来自 workflowActor persona，投影由父会话自己的请求承担。
+      neutralTaskProjection: false,
+      assistantCoTPrefillEnabled: false,
+      unfilteredFullOutputEnabled: false,
       resolveInitialBashShellSelection: async () => inheritedShellSelection,
     };
   }
@@ -3261,6 +3281,12 @@ async function resolveSessionStartupPreferences(
     memoryEnabled: runtimePreferences.memoryEnabled,
     modelContextBudgetStrategy: DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
     nativeSearchEnhancementsEnabled: runtimePreferences.nativeSearchEnhancementsEnabled,
+    ...(runtimePreferences.customSystemPrompt
+      ? { customSystemPrompt: runtimePreferences.customSystemPrompt }
+      : {}),
+    neutralTaskProjection: runtimePreferences.neutralTaskProjection === true,
+    assistantCoTPrefillEnabled: runtimePreferences.assistantCoTPrefillEnabled === true,
+    unfilteredFullOutputEnabled: runtimePreferences.unfilteredFullOutputEnabled === true,
     resolveInitialBashShellSelection: async () => {
       const executionPreferences = await requestSessionRuntimePreferences(
         context,
@@ -3349,6 +3375,19 @@ async function createRecord(
       // 不能只依赖 prompt 文本约束，否则内置工具和动态 MCP 工具仍可能越过调用面。
       toolAllowlist: "toolAllowlist" in params ? params.toolAllowlist : undefined,
       toolDisallowlist: "toolDenylist" in params ? params.toolDenylist : undefined,
+      // 用户自定义系统提示词必须在 session 创建边界写入 runtimeConfig：
+      // context builder 只在首次初始化（ensureContextInitialized）读一次
+      // config.systemPrompt，session 创建后再改设置对已有会话无效。
+      ...(startupPreferences.customSystemPrompt
+        ? { systemPrompt: startupPreferences.customSystemPrompt }
+        : {}),
+      // 中性任务投影是请求投影层策略，同样按 session 固定（见 core
+      // runtime/helpers/neutral-task-projection.ts 的不变量说明）。
+      neutralTaskProjection: startupPreferences.neutralTaskProjection,
+      // Assistant CoT Prefill 同理：按 session 固定，仅影响请求组装，不进入历史。
+      assistantCoTPrefillEnabled: startupPreferences.assistantCoTPrefillEnabled,
+      // 完整输出：按 session 固定，只影响单次请求参数。
+      unfilteredFullOutputEnabled: startupPreferences.unfilteredFullOutputEnabled,
       nativeSearchEnhancementsEnabled: startupPreferences.nativeSearchEnhancementsEnabled,
       modelContextBudgetStrategy: startupPreferences.modelContextBudgetStrategy,
       // Memory Settings 是现有 CLI features.memory/use 之外的总开关。只在关闭时

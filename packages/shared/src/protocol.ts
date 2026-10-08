@@ -323,6 +323,14 @@ export interface AppSettings {
   nativeSearchEnhancementsEnabled?: boolean;
   /** 新建或冷恢复 Session 是否启用 Memory；默认关闭。 */
   memoryEnabled?: boolean;
+  /** 用户自定义系统提示词；非空时整段替换内置 system prompt（新建会话生效，清空即恢复默认）。 */
+  customSystemPrompt?: string;
+  /** 中性任务投影：provider 请求投影层改写叙事文本与工具名；默认关闭，新建会话生效。 */
+  neutralTaskProjection?: boolean;
+  /** Assistant CoT Prefill：请求末尾预置 assistant 思考前缀；默认关闭，新建会话生效。 */
+  assistantCoTPrefillEnabled?: boolean;
+  /** 完整输出：请求不下发 maxOutputTokens，由 provider 按模型上限生成；默认关闭。 */
+  unfilteredFullOutputEnabled?: boolean;
   onboardingOccupation?:
     | "office"
     | "developer"
