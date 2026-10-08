@@ -104,6 +104,7 @@ export * from "./conversation-preview-artifacts.js";
 export * from "./zcode-session-task-status.js";
 export * from "./zcode-tool-projection-memory.js";
 export * from "./neutral-task-terms.js";
+export * from "./neutral-task-scope.js";
 export * from "./neutral-task-lexicon.js";
 export * from "./neutral-task-turn-input.js";
 export * from "./neutral-task-projection.js";

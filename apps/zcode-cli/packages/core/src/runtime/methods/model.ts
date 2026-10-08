@@ -86,6 +86,7 @@ export async function runModelTextRequest(
     ? projectModelRequestForNeutralTaskProjection({
         messages: projectedOptions.messages,
         tools: projectedOptions.tools,
+        targetAllowlist: this.config.neutralTaskTargetAllowlist ?? [],
         onDiff: (diff) => projectionDiffRecorder.record(diff),
       })
     : undefined;

@@ -2042,6 +2042,10 @@ const zhCN: Record<string, string> = {
   "settings.ctfConsole.probe.preview": "生成请求投影预览",
   "settings.ctfConsole.probe.copyOriginal": "复制原始指令",
   "settings.ctfConsole.probe.previewLabel": "模型将收到的指令（与运行时同一份投影逻辑）",
+  "settings.ctfConsole.probe.scopeMatched":
+    "目标已登记在授权作用域内：请求中已声明该事实，你的归属信息不外泄。",
+  "settings.ctfConsole.probe.lexicalTriggers":
+    "请求中含攻击语义词：{terms}（能力保持模式不删除它们，由你判断测试权限）",
   "settings.ctfConsole.log.title": "实时日志",
   "settings.ctfConsole.log.live": "会话事件已连接",
   "settings.ctfConsole.log.offline": "离线（仅控制台本地事件）",

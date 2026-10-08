@@ -1,12 +1,12 @@
 /**
  * 中性任务投影 —— 攻击语境词表与残留扫描（shared 单一事实来源）。
  *
- * "彻底完全破甲"的判据集中收口在这里：
- * 1. `TURN_INPUT_SECURITY_CONTEXT_TERMS` —— 句式重构的「含目标实体 + 含任一
- *    安全语境词」组合判定用同一份词表（§1.7 整改前漏报的直接原因是孤立
- *    触发词表；新词必须同步进来）。
- * 2. `findResidualAttackTerms` —— 句式重构产物与词表替换结果的自检口径必须
- *    与触发判定同源，否则「绕过触发词但仍带攻击语义」会再次漏网。
+ * 词表在 §1.9 之后只剩两个**遥测 / 自检**角色（不再触发改写）：
+ * 1. `TURN_INPUT_SECURITY_CONTEXT_TERMS` —— 判定一条输入是否「像执行型攻击任务」
+ *    （目标实体 + 任一攻击语义词才注入执行姿态块，见 neutral-task-turn-input），
+ *    并作为遥测口径上报 `lexicalTriggers`（供后续 buff 阶梯决策）。新词必须同步进来。
+ * 2. `findResidualAttackTerms` —— 词表替换结果的自检口径必须与本表同源，否则
+ *    「替换值自带攻击语义」会静默回退。
  *
  * 所有函数零依赖、无 IO、可单测。
  */
@@ -142,22 +142,13 @@ export const TURN_INPUT_SECURITY_CONTEXT_TERMS: readonly string[] = [
   "joomscan",
 ];
 
-const SECURITY_CONTEXT_PATTERN = new RegExp(
-  TURN_INPUT_SECURITY_CONTEXT_TERMS.map(escapeForRegExp).join("|"),
-  "i",
-);
-
 function escapeForRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** 判定文本是否含任一安全语境词（用于句式重构触发判定与自检自检）。 */
-export function containsSecurityContextTerm(text: string): boolean {
-  return SECURITY_CONTEXT_PATTERN.test(text);
-}
-
 /**
- * 扫描文本里残留的安全语境词（用于重构产物自检）。
+ * 扫描文本里残留的攻击语义词（§1.9 起仅作遥测：`lexicalTriggers` 供 buff 阶梯
+ * 决策，不再触发改写——删词会把攻击行为一起删掉，§1.8 次级失效）。
  * `targetSpans` 中的目标实体字面送忽略——**目标实体永不改写**，且其内部字串
  * 可能与攻击语义词发生子串撞车（如自带数据库名、埋点域名）。
  */

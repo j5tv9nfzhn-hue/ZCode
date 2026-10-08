@@ -392,6 +392,7 @@ async function compactActiveConversationImpl(
             ? projectModelRequestForNeutralTaskProjection({
                 messages: projectedRequestMessages,
                 tools: compactTools,
+                targetAllowlist: this.config.neutralTaskTargetAllowlist ?? [],
               })
             : undefined;
         const compactModelRequest = {

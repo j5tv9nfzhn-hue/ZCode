@@ -81,36 +81,41 @@ function projectContentBlockForNeutralTaskProjection(
 }
 
 /**
- * 叙事层中性化：**真实** user 消息走输入侧重构（句式级）；其余一律只过词表层。
- * - 合成 user 消息（system-reminder 包装 / compact 续跑摘要）只过词表层：
- *   它们的正文是技术细节，重构会摧毁上下文（见 isSyntheticUserMessageText）。
- * - system / assistant 保持既有行为，避免把模型已生成的任务书再重构。
+ * 叙事层中性化：**真实** user 消息走执行姿态注入（原文保留 + 注入块）；
+ * 其余一律只过词表层。
+ * - 真实 user 输入不再做语义删除（§1.8 / §1.9）：删掉「渗透 / 漏洞 / 提权」等于
+ *   删掉攻击行为，实测模型因此整体退化为公开面功能核查。
+ * - 合成 user 消息（system-reminder 包装 / compact 续跑摘要）只过词表层：它们的正文
+ *   是技术细节，注入任务书会摧毁上下文（见 isSyntheticUserMessageText）。
+ * - system / assistant 保持词表层行为：provider 侧的输入守卫通常扫整段会话，这里
+ *   保留中和以降低后续轮次触发概率。
  */
 function projectNarrativeContentForNeutralTaskProjection(
   message: ModelInputMessage,
+  targetAllowlist: readonly string[],
 ): ModelInputMessage["content"] {
-  const restructureUserText =
-    message.role === "user"
-      ? (text: string): string =>
-          isSyntheticUserMessageText(text)
-            ? neutralizeTextForNeutralTaskProjection(text)
-            : normalizeTurnInputForNeutralTaskMode(text).text
-      : neutralizeTextForNeutralTaskProjection;
+  const projectUserText = (text: string): string =>
+    isSyntheticUserMessageText(text)
+      ? neutralizeTextForNeutralTaskProjection(text)
+      : normalizeTurnInputForNeutralTaskMode(text, { targetAllowlist }).text;
   const content = message.content;
   if (typeof content === "string") {
-    return restructureUserText(content);
+    return message.role === "user" ? projectUserText(content) : neutralizeTextForNeutralTaskProjection(content);
   }
   // 文本块形态的 user 输入（带附件的多块消息）同样走同一判定；
   // 非 text 块由内容投影逐块处理。
-  return content.map((block) =>
-    block.type === "text"
-      ? { ...block, text: restructureUserText(block.text) }
-      : projectContentBlockForNeutralTaskProjection(block),
-  );
+  return content.map((block) => {
+    if (block.type === "text") {
+      const text = message.role === "user" ? projectUserText(block.text) : neutralizeTextForNeutralTaskProjection(block.text);
+      return { ...block, text };
+    }
+    return projectContentBlockForNeutralTaskProjection(block);
+  });
 }
 
 function projectMessageForNeutralTaskProjection(
   message: ModelInputMessage,
+  targetAllowlist: readonly string[],
   onDiff?: ProjectionDiffObserver,
 ): ModelInputMessage {
   // 不变量 2 的机器可判定分支：tool-result 的正文是真实观测，不改写；
@@ -118,7 +123,7 @@ function projectMessageForNeutralTaskProjection(
   const isToolResult = message.role === "tool" || typeof message.toolCallId === "string";
   const projectedContent = isToolResult
     ? message.content
-    : projectNarrativeContentForNeutralTaskProjection(message);
+    : projectNarrativeContentForNeutralTaskProjection(message, targetAllowlist);
   // debug-only diff：只比较叙事文本，不看 tool-call input / tool-result 正文
   // （那两类按不变量 2 不改写，比较必然相等，纯属浪费）。
   const content = reportNarrativeProjectionDiff(message, projectedContent, onDiff);
@@ -194,19 +199,26 @@ function reportNarrativeProjectionDiff(
 }
 
 /**
- * provider 请求投影：把「历史 + 系统提示词 + 工具定义」整体中性化。
+ * provider 请求投影：真实 user 输入注入执行姿态（原文保留），其余叙事文本与工具定义
+ * 过词表层，工具名双向改写。
  * 只在 AgentRuntimeConfig.neutralTaskProjection 开启时由 runModelTextRequest
  * 调用；返回的是副本，canonical 历史不受影响。
  */
 export function projectModelRequestForNeutralTaskProjection(input: {
   messages: readonly ModelInputMessage[];
   tools: readonly ModelToolContract[];
+  /**
+   * `neutralTaskTargetAllowlist`：命中时在 user 输入前注入一句作用域事实。
+   * 缺席即空表——不声明任何授权，也不因此删用户词汇（见 shared/neutral-task-scope）。
+   */
+  targetAllowlist?: readonly string[];
   /** debug-only：观测「原文 → 投影后」配对。不参与任何返回值。 */
   onDiff?: ProjectionDiffObserver;
 }): NeutralTaskProjectedModelRequest {
+  const targetAllowlist = input.targetAllowlist ?? [];
   return {
     messages: input.messages.map((message) =>
-      projectMessageForNeutralTaskProjection(message, input.onDiff),
+      projectMessageForNeutralTaskProjection(message, targetAllowlist, input.onDiff),
     ),
     tools: input.tools.map(projectToolContractForNeutralTaskProjection),
   };

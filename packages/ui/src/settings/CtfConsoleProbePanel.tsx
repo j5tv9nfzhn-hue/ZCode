@@ -24,7 +24,11 @@ export function CtfConsoleProbePanel({
   const [target, setTarget] = useState("");
   const [instruction, setInstruction] = useState(DEFAULT_TEMPLATE);
   const [preview, setPreview] = useState<string | null>(null);
-  const [projectionResidual, setProjectionResidual] = useState<readonly string[]>([]);
+  // 投影遥测：作用域是否命中 + 请求里保留了哪些攻击语义词（能力保持模式不删词）。
+  const [projectionInfo, setProjectionInfo] = useState<{
+    scopeMatched: boolean;
+    lexicalTriggers: readonly string[];
+  }>({ scopeMatched: false, lexicalTriggers: [] });
 
   const resolvedInstruction = instruction.replaceAll("{TARGET}", target.trim());
 
@@ -34,7 +38,10 @@ export function CtfConsoleProbePanel({
       ? normalized.text
       : neutralizeTextForNeutralTaskProjection(normalized.text);
     setPreview(projected);
-    setProjectionResidual(normalized.projectionResidual ?? []);
+    setProjectionInfo({
+      scopeMatched: normalized.scopeMatched === true,
+      lexicalTriggers: normalized.lexicalTriggers ?? [],
+    });
     onSubmit({
       target: target.trim(),
       instruction: resolvedInstruction,
@@ -117,12 +124,23 @@ export function CtfConsoleProbePanel({
           >
             {preview}
           </pre>
-          {projectionResidual.length > 0 ? (
+          {projectionInfo.scopeMatched ? (
+            <p
+              className="text-ui-caption text-foreground-muted"
+              data-testid="ctf-console-probe-scope"
+            >
+              {intl.formatMessage({ id: "settings.ctfConsole.probe.scopeMatched" })}
+            </p>
+          ) : null}
+          {projectionInfo.lexicalTriggers.length > 0 ? (
             <p
               className="rounded-lg border border-warning/60 bg-[color-mix(in_oklab,var(--color-warning)_12%,transparent)] px-2 py-1 text-ui-caption text-warning"
-              data-testid="ctf-console-probe-residual"
+              data-testid="ctf-console-probe-triggers"
             >
-              投影自检命中残留安全语境词：{projectionResidual.join("、")}（已退回保守模板）
+              {intl.formatMessage(
+                { id: "settings.ctfConsole.probe.lexicalTriggers" },
+                { terms: projectionInfo.lexicalTriggers.join("、") },
+              )}
             </p>
           ) : null}
         </div>

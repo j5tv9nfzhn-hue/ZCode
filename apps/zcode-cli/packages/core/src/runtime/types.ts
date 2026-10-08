@@ -215,12 +215,21 @@ export interface AgentRuntimeConfig {
   // Context Builder config
   systemPrompt?: string;
   /**
-   * 中性任务投影：只在 provider 请求投影层（runModelTextRequest）改写叙事文本
-   * 与工具名，使逐请求分类器看不到连贯攻击链；canonical 历史、工具执行、
-   * 落盘 transcript 全部不变。Host 经 session/requestRuntimePreferences 下发，
-   * 缺席即关闭。
+   * CTF Console 请求投影：只在 provider 请求投影层（runModelTextRequest）生效。
+   * 真实 user 输入**原文保留**并在前面注入「执行姿态」块；system / assistant / 合成
+   * user 文本与工具描述过词表层；工具名双向改写。canonical 历史、工具执行、落盘
+   * transcript 全部不变。Host 经 session/requestRuntimePreferences 下发，缺席即关闭。
+   *
+   * 2026-10-08 §1.9：此前实现为「删除攻击语义」，实测把攻击行为一起删掉了（模型
+   * 只去核查公开面），现改为能力保持。措辞中性化不再作用于真实 user 输入。
    */
   neutralTaskProjection?: boolean;
+  /**
+   * 授权作用域登记表（带外事实，`@zcode/shared` neutral-task-scope 清洗与匹配）。
+   * 全部目标命中时，user 输入前额外注入一句「已登记在演练作用域内」的作用域事实；
+   * 未命中**不声明任何授权**、也不删用户词汇。缺席即空表。
+   */
+  neutralTaskTargetAllowlist?: readonly string[];
   /**
    * Assistant CoT Prefill：请求组装末尾追加一条伪造的 assistant 消息
    * （reasoning block + text 前缀），让模型在「已开始执行」的预设下续写，

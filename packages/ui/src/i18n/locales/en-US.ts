@@ -2175,6 +2175,10 @@ const enUS: Record<string, string> = {
   "settings.ctfConsole.probe.copyOriginal": "Copy original instruction",
   "settings.ctfConsole.probe.previewLabel":
     "Instruction the model will receive (same projection as runtime)",
+  "settings.ctfConsole.probe.scopeMatched":
+    "Target is registered in your authorized scope: the request states that fact, and your ownership stays private.",
+  "settings.ctfConsole.probe.lexicalTriggers":
+    "The request contains attack vocabulary ({terms}) — capability-preserving mode keeps it; testing permission is yours to judge.",
   "settings.ctfConsole.log.title": "Live logs",
   "settings.ctfConsole.log.live": "session events connected",
   "settings.ctfConsole.log.offline": "offline (console-local events only)",
