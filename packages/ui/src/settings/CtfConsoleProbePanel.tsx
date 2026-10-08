@@ -24,6 +24,7 @@ export function CtfConsoleProbePanel({
   const [target, setTarget] = useState("");
   const [instruction, setInstruction] = useState(DEFAULT_TEMPLATE);
   const [preview, setPreview] = useState<string | null>(null);
+  const [projectionResidual, setProjectionResidual] = useState<readonly string[]>([]);
 
   const resolvedInstruction = instruction.replaceAll("{TARGET}", target.trim());
 
@@ -33,6 +34,7 @@ export function CtfConsoleProbePanel({
       ? normalized.text
       : neutralizeTextForNeutralTaskProjection(normalized.text);
     setPreview(projected);
+    setProjectionResidual(normalized.projectionResidual ?? []);
     onSubmit({
       target: target.trim(),
       instruction: resolvedInstruction,
@@ -115,6 +117,14 @@ export function CtfConsoleProbePanel({
           >
             {preview}
           </pre>
+          {projectionResidual.length > 0 ? (
+            <p
+              className="rounded-lg border border-warning/60 bg-[color-mix(in_oklab,var(--color-warning)_12%,transparent)] px-2 py-1 text-ui-caption text-warning"
+              data-testid="ctf-console-probe-residual"
+            >
+              投影自检命中残留安全语境词：{projectionResidual.join("、")}（已退回保守模板）
+            </p>
+          ) : null}
         </div>
       ) : null}
     </section>
