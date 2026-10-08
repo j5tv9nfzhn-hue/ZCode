@@ -96,7 +96,8 @@
     "clean": "node ../../scripts/clean-dist.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src",
-    "lint:fix": "oxlint --write src"
+    "lint:fix": "oxlint --write src",
+    "test": "tsx --tsconfig ../../../../tsconfig.base.json --test test/pentest-orchestration.test.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.81",
