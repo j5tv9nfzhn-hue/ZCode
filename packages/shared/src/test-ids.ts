@@ -369,8 +369,19 @@ export const TID_RESOURCE_MANAGER_STORAGE_CONFIRM_CANCEL =
   "resource-manager-storage-confirm-cancel";
 /** Memory 设置模块中的总开关 */
 export const TID_SETTINGS_MEMORY_SWITCH = "settings-memory-switch";
+/** 自定义系统提示词多行输入框 */
+export const TID_SETTINGS_SYSTEM_PROMPT_TEXTAREA = "settings-system-prompt-textarea";
+/** 中性任务投影总开关 */
+export const TID_SETTINGS_NEUTRAL_TASK_PROJECTION_SWITCH =
+  "settings-neutral-task-projection-switch";
 /** Memory 设置模块刷新按钮 */
 export const TID_SETTINGS_MEMORY_REFRESH = "settings-memory-refresh";
+/** CoT Prefill 总开关 */
+export const TID_SETTINGS_COT_PREFILL_SWITCH = "settings-cot-prefill-switch";
+/** 完整输出（不截断）总开关 */
+export const TID_SETTINGS_UNFILTERED_OUTPUT_SWITCH = "settings-unfiltered-output-switch";
+/** CTF Console 公网目标测试提交按钮 */
+export const TID_SETTINGS_CTF_PROBE_SUBMIT = "settings-ctf-probe-submit";
 /** Memory Workspace Scope 菜单触发器 */
 export const TID_SETTINGS_MEMORY_SCOPE_TRIGGER = "settings-memory-scope-trigger";
 /** Memory Workspace Scope 图标 */

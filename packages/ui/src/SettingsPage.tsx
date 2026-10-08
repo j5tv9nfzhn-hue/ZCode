@@ -70,6 +70,8 @@ import { PluginsSection } from "@/settings/PluginsSection.js";
 import { HooksSection } from "@/settings/HooksSection.js";
 import { WorkspaceFileSearchSection } from "@/settings/WorkspaceFileSearchSection.js";
 import { MemorySettingsSection } from "@/settings/MemorySettingsSection.js";
+import { SystemPromptSettingsSection } from "@/settings/SystemPromptSettingsSection.js";
+import { CtfConsoleSection } from "@/settings/CtfConsoleSection.js";
 import { BrowserSettingsSection } from "@/settings/BrowserSettingsSection.js";
 import { ComputerUseSection } from "@/settings/ComputerUseSection.js";
 import { ShortcutSettingsSection } from "@/settings/ShortcutSettingsSection.js";
@@ -680,6 +682,10 @@ export function SettingsPage({
     return [...names];
   }, [sharedSettings?.recentProjects, workspaceTabs]);
   const memoryEnabled = sharedSettings?.memoryEnabled === true;
+  const customSystemPrompt = sharedSettings?.customSystemPrompt ?? "";
+  const neutralTaskProjection = sharedSettings?.neutralTaskProjection === true;
+  const assistantCoTPrefillEnabled = sharedSettings?.assistantCoTPrefillEnabled === true;
+  const unfilteredFullOutputEnabled = sharedSettings?.unfilteredFullOutputEnabled === true;
   const nativeSearchEnhancementsEnabled = sharedSettings?.nativeSearchEnhancementsEnabled !== false;
   const askUserQuestionAutoResolutionEnabled =
     sharedSettings?.askUserQuestionAutoResolutionEnabled !== false;
@@ -939,6 +945,65 @@ export function SettingsPage({
               console.warn("[settings] 回写引导记录失败", String(cause));
             });
         },
+        completed: {
+          resultSource: "shared_settings",
+          stateAfter: enabled ? "enabled" : "disabled",
+        },
+      });
+    },
+    [updateSharedSettings],
+  );
+  // 自定义系统提示词：整段替换 context builder 的稳定 body，只在新建会话
+  // 生效（context 只在首次初始化读一次 config.systemPrompt）。清空恢复默认。
+  const handleCustomSystemPromptSave = useCallback(
+    async (value: string) => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "save_custom_system_prompt",
+        trigger: "button",
+        operation: () => updateSharedSettings({ customSystemPrompt: value }),
+        completed: { resultSource: "shared_settings" },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleNeutralTaskProjectionChange = useCallback(
+    async (enabled: boolean) => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "toggle_neutral_task_projection",
+        trigger: "switch",
+        operation: () => updateSharedSettings({ neutralTaskProjection: enabled }),
+        completed: {
+          resultSource: "shared_settings",
+          stateAfter: enabled ? "enabled" : "disabled",
+        },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleAssistantCoTPrefillEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "toggle_assistant_cot_prefill",
+        trigger: "switch",
+        operation: () => updateSharedSettings({ assistantCoTPrefillEnabled: enabled }),
+        completed: {
+          resultSource: "shared_settings",
+          stateAfter: enabled ? "enabled" : "disabled",
+        },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleUnfilteredFullOutputChange = useCallback(
+    async (enabled: boolean) => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "toggle_unfiltered_output",
+        trigger: "switch",
+        operation: () => updateSharedSettings({ unfilteredFullOutputEnabled: enabled }),
         completed: {
           resultSource: "shared_settings",
           stateAfter: enabled ? "enabled" : "disabled",
@@ -1833,6 +1898,30 @@ export function SettingsPage({
                               workspaceDisplayNames={memoryWorkspaceDisplayNames}
                             />
                           </ServiceProvider>
+                        ) : activeSection === "systemPrompt" ? (
+                          <SystemPromptSettingsSection
+                            customSystemPrompt={customSystemPrompt}
+                            neutralTaskProjection={neutralTaskProjection}
+                            onCustomSystemPromptSave={handleCustomSystemPromptSave}
+                            onNeutralTaskProjectionChange={handleNeutralTaskProjectionChange}
+                            onAssistantCoTPrefillEnabledChange={
+                              handleAssistantCoTPrefillEnabledChange
+                            }
+                            assistantCoTPrefillEnabled={assistantCoTPrefillEnabled}
+                          />
+                        ) : activeSection === "ctfConsole" ? (
+                          <CtfConsoleSection
+                            assistantCoTPrefillEnabled={assistantCoTPrefillEnabled}
+                            neutralTaskProjectionEnabled={neutralTaskProjection}
+                            unfilteredFullOutputEnabled={unfilteredFullOutputEnabled}
+                            workspaceIdentity={activeWorkspaceIdentity ?? undefined}
+                            workspacePath={activeWorkspacePath ?? undefined}
+                            onAssistantCoTPrefillEnabledChange={
+                              handleAssistantCoTPrefillEnabledChange
+                            }
+                            onNeutralTaskProjectionChange={handleNeutralTaskProjectionChange}
+                            onUnfilteredFullOutputChange={handleUnfilteredFullOutputChange}
+                          />
                         ) : activeSection === "plugin" ? (
                           <PluginsSection
                             key={`plugin:${settingsSectionNavigationVersion}`}

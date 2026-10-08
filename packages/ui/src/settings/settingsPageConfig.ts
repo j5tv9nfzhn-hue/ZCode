@@ -5,6 +5,7 @@ import {
   Settings2,
   Package,
   Bot,
+  FileText,
   Palette,
   Sun,
   BarChart3,
@@ -77,6 +78,18 @@ const BASE_SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "memory",
     icon: Brain,
     titleId: "settings.memory",
+    groupId: "agentCapabilities",
+  },
+  {
+    id: "systemPrompt",
+    icon: FileText,
+    titleId: "settings.systemPrompt.title",
+    groupId: "agentCapabilities",
+  },
+  {
+    id: "ctfConsole",
+    icon: Terminal,
+    titleId: "settings.ctfConsole.title",
     groupId: "agentCapabilities",
   },
   {

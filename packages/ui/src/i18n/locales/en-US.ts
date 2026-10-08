@@ -2128,6 +2128,45 @@ const enUS: Record<string, string> = {
     "Adjust interface text without changing icons or layout dimensions.",
   "settings.systemTitle": "General",
   "settings.systemDescription": "These preferences affect the current window experience.",
+  "settings.systemPrompt.title": "System Prompt",
+  "settings.systemPrompt.customPrompt.label": "Custom system prompt",
+  "settings.systemPrompt.customPrompt.description":
+    "Replaces the built-in system prompt entirely; clear it to restore the default. Applies to newly created sessions.",
+  "settings.systemPrompt.customPrompt.placeholder":
+    "Leave blank to use the built-in prompt. Example: act before reporting, decompose long tasks and advance step by step.",
+  "settings.systemPrompt.save": "Save",
+  "settings.systemPrompt.reset": "Restore default",
+  "settings.systemPrompt.neutralProjection.label": "Neutral task projection",
+  "settings.systemPrompt.neutralProjection.description":
+    "When enabled, requests sent to the model are neutralized first: instructions are restructured into executable verification tasks and tool names are projected to neutral forms, while history and tool execution stay verbatim. Useful for long multi-stage task execution.",
+  "settings.systemPrompt.cotPrefill.label": "Assistant thought prefill",
+  "settings.systemPrompt.cotPrefill.description":
+    'When enabled, an assistant thinking prefix (reasoning block + lead-in) is injected at the end of the message list before each request, so the model continues from a "already started" stance. Effective with self-hosted providers; off by default.',
+  "settings.ctfConsole.title": "CTF Console",
+  "settings.ctfConsole.description":
+    "A console for authorized exercises: request projection switches, public-target testing and live runtime logs. Switches apply to newly created sessions; history and workspace files stay verbatim.",
+  "settings.ctfConsole.unfilteredOutput.label": "Full output (no truncation)",
+  "settings.ctfConsole.unfilteredOutput.description":
+    "When enabled, model requests omit maxOutputTokens so the provider applies its own model limit instead of the local budget.",
+  "settings.ctfConsole.probe.title": "Public target testing",
+  "settings.ctfConsole.probe.disclaimer":
+    "Please weigh the stakes before entering: target choice, rate and depth directly affect real public systems. The decision and all responsibility remain yours.",
+  "settings.ctfConsole.probe.targetLabel": "Target (domain / URL / IP)",
+  "settings.ctfConsole.probe.targetPlaceholder": "example.com",
+  "settings.ctfConsole.probe.instructionLabel": "Instruction ({TARGET} placeholder supported)",
+  "settings.ctfConsole.probe.preview": "Generate projected request preview",
+  "settings.ctfConsole.probe.copyOriginal": "Copy original instruction",
+  "settings.ctfConsole.probe.previewLabel":
+    "Instruction the model will receive (same projection as runtime)",
+  "settings.ctfConsole.log.title": "Live logs",
+  "settings.ctfConsole.log.live": "session events connected",
+  "settings.ctfConsole.log.offline": "offline (console-local events only)",
+  "settings.ctfConsole.log.search": "Search logs",
+  "settings.ctfConsole.log.filter": "Filter by level",
+  "settings.ctfConsole.log.allLevels": "All",
+  "settings.ctfConsole.log.copy": "Copy",
+  "settings.ctfConsole.log.clear": "Clear",
+  "settings.ctfConsole.log.empty": "No log events yet",
   "settings.locale": "Language",
   "settings.localeDescription": "Choose the display language used by the application UI.",
   "settings.terminalProfile": "Inherit system terminal profile",

@@ -65,6 +65,12 @@ export const SETTINGS_USER_ACTION_FEATURES = {
     "change_code_font_size",
   ],
   "settings.terminal": ["toggle_system_profile", "save_font_family", "change_shell"],
+  "settings.system_prompt": [
+    "save_custom_system_prompt",
+    "toggle_neutral_task_projection",
+    "toggle_assistant_cot_prefill",
+    "toggle_unfiltered_output",
+  ],
   "settings.search": ["toggle_native_search"],
   "settings.network": ["save_http_proxy", "save_no_proxy", "save_ca_certificate"],
   "settings.desktop": ["toggle_hardware_acceleration", "toggle_close_to_tray", "toggle_keep_awake"],
