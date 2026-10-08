@@ -2147,7 +2147,24 @@ const enUS: Record<string, string> = {
     "A console for authorized exercises: request projection switches, public-target testing and live runtime logs. Switches apply to newly created sessions; history and workspace files stay verbatim.",
   "settings.ctfConsole.unfilteredOutput.label": "Full output (no truncation)",
   "settings.ctfConsole.unfilteredOutput.description":
-    "When enabled, model requests omit maxOutputTokens so the provider applies its own model limit instead of the local budget.",
+    "Sends maxOutputTokens at the model's declared limit instead of the local context budget. The field is mandatory on the provider side — omitting it makes the request invalid.",
+  "settings.ctfConsole.projectionDiffCapture.label": "Projection diff capture (debug)",
+  "settings.ctfConsole.projectionDiffCapture.description":
+    "Records an original → projected pair for each narrative message into an in-memory ring buffer and shows it live. Off by default; requires the projection switch. Content includes the user's raw input and is never written to chat history or disk.",
+  "settings.ctfConsole.projectionDiffCaptureAssistant.label": "Also capture assistant side",
+  "settings.ctfConsole.projectionDiffCaptureAssistant.description":
+    "The assistant side only goes through the word list, so diffs are large and do not answer whether sentence restructuring worked. Off by default.",
+  "settings.ctfConsole.projectionDiff.title": "Projection diff",
+  "settings.ctfConsole.projectionDiff.disabled": "Capture is off",
+  "settings.ctfConsole.projectionDiff.summary":
+    "inspected {inspected} / changed {changed} / evicted {evicted}",
+  "settings.ctfConsole.projectionDiff.refresh": "Refresh",
+  "settings.ctfConsole.projectionDiff.clear": "Clear view",
+  "settings.ctfConsole.projectionDiff.empty":
+    "No diff yet. Enable capture and send a message to observe.",
+  "settings.ctfConsole.projectionDiff.truncated": "truncated ({length} chars)",
+  "settings.ctfConsole.projectionDiff.privacyWarning":
+    "This content contains the user's raw input. It lives in memory only and is never written to chat history or disk. Confirm compliance before sharing or screenshotting.",
   "settings.ctfConsole.probe.title": "Public target testing",
   "settings.ctfConsole.probe.disclaimer":
     "Please weigh the stakes before entering: target choice, rate and depth directly affect real public systems. The decision and all responsibility remain yours.",

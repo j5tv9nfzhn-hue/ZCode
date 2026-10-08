@@ -79,10 +79,14 @@ export async function runModelTextRequest(
   // helpers/neutral-task-projection.ts）。入站 tool_call.name 在下面的
   // normalizeModelToolCallsForRuntime 处还原为注册表规范名。
   const neutralTaskProjectionEnabled = this.config.neutralTaskProjection === true;
+  // debug-only：把「原文 → 投影后」配对交给 runtime 级环形缓冲，供
+  // `session/debug` 拉取。record 在开关关闭时是空实现，不读正文。
+  const projectionDiffRecorder = this.projectionDiffRecorder;
   const neutralProjection = neutralTaskProjectionEnabled
     ? projectModelRequestForNeutralTaskProjection({
         messages: projectedOptions.messages,
         tools: projectedOptions.tools,
+        onDiff: (diff) => projectionDiffRecorder.record(diff),
       })
     : undefined;
   if (neutralProjection) {
@@ -92,6 +96,15 @@ export async function runModelTextRequest(
       messageCount: neutralProjection.messages.length,
       module: "core.runtime",
       toolCount: neutralProjection.tools.length,
+      // 只记计数与开关状态，绝不记正文：文件日志对消息内容整体脱敏，
+      // 在这里写原文等于绕过脱敏（见 spec 不变量 8）。
+      projectionDiff: {
+        captureEnabled: projectionDiffRecorder.summary.enabled,
+        captureAssistant: projectionDiffRecorder.summary.captureAssistant,
+        inspected: projectionDiffRecorder.summary.inspected,
+        changed: projectionDiffRecorder.summary.changed,
+        evicted: projectionDiffRecorder.summary.evicted,
+      },
     });
   }
   logModelRequestMediaSummary(this.logger, projectedOptions.traceContext, {

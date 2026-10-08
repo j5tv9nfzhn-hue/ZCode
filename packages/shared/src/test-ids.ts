@@ -380,6 +380,12 @@ export const TID_SETTINGS_MEMORY_REFRESH = "settings-memory-refresh";
 export const TID_SETTINGS_COT_PREFILL_SWITCH = "settings-cot-prefill-switch";
 /** 完整输出（不截断）总开关 */
 export const TID_SETTINGS_UNFILTERED_OUTPUT_SWITCH = "settings-unfiltered-output-switch";
+/** 投影 diff 捕获主开关（debug-only，默认关闭）。 */
+export const TID_SETTINGS_PROJECTION_DIFF_CAPTURE_SWITCH =
+  "settings-projection-diff-capture-switch";
+/** 投影 diff 捕获的 assistant 侧二次开关。 */
+export const TID_SETTINGS_PROJECTION_DIFF_CAPTURE_ASSISTANT_SWITCH =
+  "settings-projection-diff-capture-assistant-switch";
 /** CTF Console 公网目标测试提交按钮 */
 export const TID_SETTINGS_CTF_PROBE_SUBMIT = "settings-ctf-probe-submit";
 /** Memory Workspace Scope 菜单触发器 */

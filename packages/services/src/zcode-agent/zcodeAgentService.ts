@@ -2167,6 +2167,8 @@ export function createZCodeAgentService(
                     neutralTaskProjection: false,
                     assistantCoTPrefillEnabled: false,
                     unfilteredFullOutputEnabled: false,
+                    neutralTaskProjectionDiffCapture: false,
+                    neutralTaskProjectionDiffCaptureAssistant: false,
                   },
                 );
               } catch (error) {

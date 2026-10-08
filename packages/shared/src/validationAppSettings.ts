@@ -466,6 +466,9 @@ const appSettingsObjectSchema = z.object({
   neutralTaskProjection: z.boolean().default(false),
   assistantCoTPrefillEnabled: z.boolean().default(false),
   unfilteredFullOutputEnabled: z.boolean().default(false),
+  neutralTaskProjectionDiffCapture: z.boolean().default(false),
+  neutralTaskProjectionDiffCaptureAssistant: z.boolean().default(false),
+
   lastWorkspaceSession: z.array(appWorkspaceSessionEntrySchema).default([]),
   lastActiveTabIndex: z.number().int().nonnegative().default(0),
   lastActiveTaskByWorkspace: z.record(z.string(), z.string()).optional(),
@@ -555,6 +558,9 @@ export const appSettingsPatchSchema = z.object({
   neutralTaskProjection: z.boolean().optional(),
   assistantCoTPrefillEnabled: z.boolean().optional(),
   unfilteredFullOutputEnabled: z.boolean().optional(),
+  neutralTaskProjectionDiffCapture: z.boolean().optional(),
+  neutralTaskProjectionDiffCaptureAssistant: z.boolean().optional(),
+
   lastWorkspaceSession: z.array(appWorkspaceSessionEntrySchema).optional(),
   lastActiveTabIndex: z.number().int().nonnegative().optional(),
   lastActiveTaskByWorkspace: z.record(z.string(), z.string()).optional(),

@@ -2016,7 +2016,23 @@ const zhCN: Record<string, string> = {
     "面向授权演练的控制台：统一管理请求投影开关、公网目标测试与运行时实时日志。所有开关按新建会话生效，历史记录与工作区文件保持原样。",
   "settings.ctfConsole.unfilteredOutput.label": "完整输出（不截断）",
   "settings.ctfConsole.unfilteredOutput.description":
-    "开启后模型请求不再携带 maxOutputTokens，输出上限交由 provider 按模型自身规格决定，避免长输出被本地预算截断。",
+    "开启后按模型自身声明的上限下发 maxOutputTokens，不受本地上下文预算截断。该字段必须下发（provider 侧为必填校验），省略会导致请求被拒。",
+  "settings.ctfConsole.projectionDiffCapture.label": "投影 diff 捕获（调试）",
+  "settings.ctfConsole.projectionDiffCapture.description":
+    "记录每条叙事文本的「原文 → 投影后」配对到内存环形缓冲，实时展示。默认关闭；仅在投影开启时可用。记录内容含用户原始输入，不写入聊天记录与落盘历史。",
+  "settings.ctfConsole.projectionDiffCaptureAssistant.label": "同时捕获 assistant 侧",
+  "settings.ctfConsole.projectionDiffCaptureAssistant.description":
+    "assistant 侧只做词表替换，diff 量大且不指向「句式重构是否生效」这一核心问题，默认不记录。",
+  "settings.ctfConsole.projectionDiff.title": "投影 diff",
+  "settings.ctfConsole.projectionDiff.disabled": "未开启捕获",
+  "settings.ctfConsole.projectionDiff.summary":
+    "检查 {inspected} 条 / 变更 {changed} 条 / 环形淘汰 {evicted} 条",
+  "settings.ctfConsole.projectionDiff.refresh": "刷新",
+  "settings.ctfConsole.projectionDiff.clear": "清空视图",
+  "settings.ctfConsole.projectionDiff.empty": "暂无 diff。开启捕获后发送一条消息即可观察。",
+  "settings.ctfConsole.projectionDiff.truncated": "已截断（原文 {length} 字）",
+  "settings.ctfConsole.projectionDiff.privacyWarning":
+    "以下内容含用户原始输入，仅存在于内存、不写入聊天记录与落盘历史。截图与外传前请自行确认合规。",
   "settings.ctfConsole.probe.title": "公网目标测试",
   "settings.ctfConsole.probe.disclaimer":
     "输入前请务必慎思权重：目标选择、频率与深度将直接影响真实公网系统。确认由你自行判断并承担全部责任。",

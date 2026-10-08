@@ -1717,7 +1717,10 @@ export const zcodeSessionRuntimePreferencesResultSchema = z
     // Assistant CoT Prefill；缺席即关闭（fail-closed）。
     assistantCoTPrefillEnabled: z.boolean().optional(),
     // 完整输出（不下发 maxOutputTokens）；缺席即关闭（fail-closed）。
-    unfilteredFullOutputEnabled: z.boolean().optional(),
+    unfilteredFullOutputEnabled: z.boolean().optional(), // 投影 diff 捕获（debug-only）：默认关闭；含用户原始输入，不进 transcript。
+    neutralTaskProjectionDiffCapture: z.boolean().optional(),
+    // assistant 侧 diff 的二次开关（只过词表层，量大门檻低）。
+    neutralTaskProjectionDiffCaptureAssistant: z.boolean().optional(),
   })
   .strict();
 export type ZCodeSessionRuntimePreferencesResult = z.infer<

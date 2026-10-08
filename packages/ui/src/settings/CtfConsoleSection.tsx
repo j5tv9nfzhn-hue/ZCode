@@ -4,6 +4,8 @@ import { useServices } from "@/hooks/useServices.js";
 import { CtfConsoleConfigPanel } from "@/settings/CtfConsoleConfigPanel.js";
 import { CtfConsoleLogPanel, type CtfConsoleLogEntry } from "@/settings/CtfConsoleLogPanel.js";
 import { CtfConsoleProbePanel } from "@/settings/CtfConsoleProbePanel.js";
+import { CtfConsoleProjectionDiffPanel } from "@/settings/CtfConsoleProjectionDiffPanel.js";
+import type { SessionDebugProjectionDiff, SessionDebugSnapshot } from "@zcode/shared";
 
 const MAX_LOG_ENTRIES = 300;
 const POLL_INTERVAL_MS = 3000;
@@ -31,20 +33,28 @@ export function CtfConsoleSection({
   neutralTaskProjectionEnabled,
   assistantCoTPrefillEnabled,
   unfilteredFullOutputEnabled,
+  projectionDiffCaptureEnabled,
+  projectionDiffCaptureAssistantEnabled,
   workspacePath,
   workspaceIdentity,
   onNeutralTaskProjectionChange,
   onAssistantCoTPrefillEnabledChange,
   onUnfilteredFullOutputChange,
+  onProjectionDiffCaptureChange,
+  onProjectionDiffCaptureAssistantChange,
 }: {
   neutralTaskProjectionEnabled: boolean;
   assistantCoTPrefillEnabled: boolean;
   unfilteredFullOutputEnabled: boolean;
+  projectionDiffCaptureEnabled: boolean;
+  projectionDiffCaptureAssistantEnabled: boolean;
   workspacePath?: string;
   workspaceIdentity?: string;
   onNeutralTaskProjectionChange: (enabled: boolean) => Promise<void>;
   onAssistantCoTPrefillEnabledChange: (enabled: boolean) => Promise<void>;
   onUnfilteredFullOutputChange: (enabled: boolean) => Promise<void>;
+  onProjectionDiffCaptureChange: (enabled: boolean) => Promise<void>;
+  onProjectionDiffCaptureAssistantChange: (enabled: boolean) => Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
   const services = useServices();
@@ -121,6 +131,40 @@ export function CtfConsoleSection({
     setEntries([]);
   }, []);
 
+  // 投影 diff：debug-only，按需拉取（环形缓冲容量 200，UI 侧不缓存历史）。
+  const [diffEntries, setDiffEntries] = useState<readonly SessionDebugProjectionDiff[]>([]);
+  const [diffSummary, setDiffSummary] = useState<SessionDebugSnapshot["projectionDiffSummary"]>({
+    enabled: false,
+    captureAssistant: false,
+    inspected: 0,
+    changed: 0,
+    evicted: 0,
+  });
+
+  const refreshProjectionDiffs = useCallback(async () => {
+    if (!workspacePath || !sessionIdRef.current) return;
+    try {
+      const target = workspaceIdentity ? { workspacePath, workspaceIdentity } : { workspacePath };
+      const snapshot = await services.zcodeAgentService.readSessionDebug({
+        ...target,
+        sessionId: sessionIdRef.current,
+      });
+      setDiffEntries(snapshot.projectionDiffs);
+      setDiffSummary(snapshot.projectionDiffSummary);
+    } catch {
+      // 远程 workspace 或无 runtime 资产：保持「未开启」占位，不向设置页抛错。
+    }
+  }, [services.zcodeAgentService, workspaceIdentity, workspacePath]);
+
+  // 与会话事件同一节奏刷新；捕获开关关闭时 summary.enabled=false，面板显示禁用态。
+  useEffect(() => {
+    if (!workspacePath) return;
+    const timer = setInterval(() => {
+      void refreshProjectionDiffs();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [refreshProjectionDiffs, workspacePath]);
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-border bg-card px-4 py-3">
@@ -139,6 +183,10 @@ export function CtfConsoleSection({
         onNeutralTaskProjectionChange={onNeutralTaskProjectionChange}
         onAssistantCoTPrefillEnabledChange={onAssistantCoTPrefillEnabledChange}
         onUnfilteredFullOutputChange={onUnfilteredFullOutputChange}
+        projectionDiffCaptureEnabled={projectionDiffCaptureEnabled}
+        projectionDiffCaptureAssistantEnabled={projectionDiffCaptureAssistantEnabled}
+        onProjectionDiffCaptureChange={onProjectionDiffCaptureChange}
+        onProjectionDiffCaptureAssistantChange={onProjectionDiffCaptureAssistantChange}
       />
 
       <CtfConsoleProbePanel
@@ -165,6 +213,15 @@ export function CtfConsoleSection({
       />
 
       <CtfConsoleLogPanel entries={entries} live={live} onClear={handleClear} />
+
+      <CtfConsoleProjectionDiffPanel
+        entries={diffEntries}
+        summary={diffSummary}
+        onRefresh={() => {
+          void refreshProjectionDiffs();
+        }}
+        onClear={() => setDiffEntries([])}
+      />
     </div>
   );
 }

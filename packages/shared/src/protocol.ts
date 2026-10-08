@@ -331,6 +331,9 @@ export interface AppSettings {
   assistantCoTPrefillEnabled?: boolean;
   /** 完整输出：请求不下发 maxOutputTokens，由 provider 按模型上限生成；默认关闭。 */
   unfilteredFullOutputEnabled?: boolean;
+  neutralTaskProjectionDiffCapture?: boolean;
+  neutralTaskProjectionDiffCaptureAssistant?: boolean;
+
   onboardingOccupation?:
     | "office"
     | "developer"

@@ -234,6 +234,19 @@ export interface AgentRuntimeConfig {
    */
   unfilteredFullOutputEnabled?: boolean;
   /**
+   * 投影 diff 捕获（debug-only，默认关闭）：记录「原文 → 投影后」配对到内存
+   * 环形缓冲，供 `session/debug` 按需拉取。仅在 `neutralTaskProjection` 同时
+   * 开启时生效（双前置，见 helpers/neutral-task-projection-diff.ts）。
+   * **记录内容含用户原始输入**，且不进 transcript（不构造 SessionEvent）。
+   */
+  neutralTaskProjectionDiffCapture?: boolean;
+  /**
+   * 投影 diff 是否包含 assistant 侧（默认关闭）。assistant 侧只过词表层，
+   * diff 量远大于 user 侧且不指向「句式重构是否生效」这一核心问题，
+   * 因此需要二次开关显式开启。
+   */
+  neutralTaskProjectionDiffCaptureAssistant?: boolean;
+  /**
    * 动态工作流子代理的身份输入：在场即让
    * context builder 走「基座 + 工作流子代理契约 + persona 叠加」路径，而不是把 persona 当
    * `systemPrompt` 整段替换。与 `systemPrompt` 互斥（builder 抛错）。

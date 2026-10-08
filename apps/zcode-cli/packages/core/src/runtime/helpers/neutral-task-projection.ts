@@ -59,6 +59,10 @@ export {
   restoreToolCallNameForNeutralTaskProjection,
 };
 export type { NormalizedTurnInput } from "@zcode/shared";
+import type {
+  ProjectionDiffPhase,
+  ProjectionDiffRole,
+} from "./neutral-task-projection-diff.js";
 
 function projectContentBlockForNeutralTaskProjection(
   block: ModelMessageContentBlock,
@@ -105,13 +109,19 @@ function projectNarrativeContentForNeutralTaskProjection(
   );
 }
 
-function projectMessageForNeutralTaskProjection(message: ModelInputMessage): ModelInputMessage {
+function projectMessageForNeutralTaskProjection(
+  message: ModelInputMessage,
+  onDiff?: ProjectionDiffObserver,
+): ModelInputMessage {
   // 不变量 2 的机器可判定分支：tool-result 的正文是真实观测，不改写；
   // 叙事层（system / user / assistant 文本）才做中性化。
   const isToolResult = message.role === "tool" || typeof message.toolCallId === "string";
-  const content = isToolResult
+  const projectedContent = isToolResult
     ? message.content
     : projectNarrativeContentForNeutralTaskProjection(message);
+  // debug-only diff：只比较叙事文本，不看 tool-call input / tool-result 正文
+  // （那两类按不变量 2 不改写，比较必然相等，纯属浪费）。
+  const content = reportNarrativeProjectionDiff(message, projectedContent, onDiff);
   // toolCalls：只改 name，不动 input（不变量 2）。tool-result 的 toolName 与
   // tools 数组、assistant 回放必须一致，否则 provider 会拒绝 tool_use/tool_result
   // 配对。
@@ -144,6 +154,46 @@ export interface NeutralTaskProjectedModelRequest {
 }
 
 /**
+ * debug-only 投影 diff 观察口。由 runModelTextRequest 注入记录器；未开启时
+ * 传 undefined，本模块不持有任何运行时状态（保持投影函数可单测）。
+ */
+export type ProjectionDiffObserver = (input: {
+  readonly role: ProjectionDiffRole;
+  readonly phase: ProjectionDiffPhase;
+  readonly before: string;
+  readonly after: string;
+}) => void;
+
+/** 取出消息里的全部叙事文本（text 块；字符串形态整体算一块）。 */
+function readNarrativeTexts(content: ModelInputMessage["content"]): string[] {
+  if (typeof content === "string") return [content];
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((block): block is Extract<typeof block, { type: "text" }> => block.type === "text")
+    .map((block) => block.text);
+}
+
+/** 比较投影前后的叙事文本并上报；返回投影后的 content 原样。 */
+function reportNarrativeProjectionDiff(
+  message: ModelInputMessage,
+  projectedContent: ModelInputMessage["content"],
+  onDiff: ProjectionDiffObserver | undefined,
+): ModelInputMessage["content"] {
+  if (!onDiff) return projectedContent;
+  // system 不进 diff：系统提示词是产品自有文本，改写它不是用户需要观察的行为，
+  // 且体积最大。user 真实输入才是「句式重构是否生效」的判据。
+  const role = message.role === "user" ? "user" : message.role === "assistant" ? "assistant" : null;
+  if (!role) return projectedContent;
+  const phase: ProjectionDiffPhase = role === "user" ? "restructure" : "lexicon";
+  const before = readNarrativeTexts(message.content);
+  const after = readNarrativeTexts(projectedContent);
+  const beforeJoined = before.join("\n");
+  const afterJoined = after.join("\n");
+  onDiff({ role, phase, before: beforeJoined, after: afterJoined });
+  return projectedContent;
+}
+
+/**
  * provider 请求投影：把「历史 + 系统提示词 + 工具定义」整体中性化。
  * 只在 AgentRuntimeConfig.neutralTaskProjection 开启时由 runModelTextRequest
  * 调用；返回的是副本，canonical 历史不受影响。
@@ -151,9 +201,13 @@ export interface NeutralTaskProjectedModelRequest {
 export function projectModelRequestForNeutralTaskProjection(input: {
   messages: readonly ModelInputMessage[];
   tools: readonly ModelToolContract[];
+  /** debug-only：观测「原文 → 投影后」配对。不参与任何返回值。 */
+  onDiff?: ProjectionDiffObserver;
 }): NeutralTaskProjectedModelRequest {
   return {
-    messages: input.messages.map(projectMessageForNeutralTaskProjection),
+    messages: input.messages.map((message) =>
+      projectMessageForNeutralTaskProjection(message, input.onDiff),
+    ),
     tools: input.tools.map(projectToolContractForNeutralTaskProjection),
   };
 }

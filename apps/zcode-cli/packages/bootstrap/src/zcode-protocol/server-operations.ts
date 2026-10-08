@@ -157,6 +157,8 @@ interface SessionStartupPreferences {
   assistantCoTPrefillEnabled: boolean;
   /** 完整输出：不下发 maxOutputTokens；缺席/false 即关闭。 */
   unfilteredFullOutputEnabled: boolean;
+  neutralTaskProjectionDiffCapture: boolean;
+  neutralTaskProjectionDiffCaptureAssistant: boolean;
 }
 
 type SessionStartupPreferencesSource =
@@ -3240,6 +3242,8 @@ async function requestSessionRuntimePreferences(
         neutralTaskProjection: false,
         assistantCoTPrefillEnabled: false,
         unfilteredFullOutputEnabled: false,
+        neutralTaskProjectionDiffCapture: false,
+        neutralTaskProjectionDiffCaptureAssistant: false,
       };
     }
     throw error;
@@ -3263,6 +3267,8 @@ async function resolveSessionStartupPreferences(
       neutralTaskProjection: false,
       assistantCoTPrefillEnabled: false,
       unfilteredFullOutputEnabled: false,
+      neutralTaskProjectionDiffCapture: false,
+      neutralTaskProjectionDiffCaptureAssistant: false,
       resolveInitialBashShellSelection: async () => inheritedShellSelection,
     };
   }
@@ -3287,6 +3293,10 @@ async function resolveSessionStartupPreferences(
     neutralTaskProjection: runtimePreferences.neutralTaskProjection === true,
     assistantCoTPrefillEnabled: runtimePreferences.assistantCoTPrefillEnabled === true,
     unfilteredFullOutputEnabled: runtimePreferences.unfilteredFullOutputEnabled === true,
+      neutralTaskProjectionDiffCapture:
+        runtimePreferences.neutralTaskProjectionDiffCapture === true,
+      neutralTaskProjectionDiffCaptureAssistant:
+        runtimePreferences.neutralTaskProjectionDiffCaptureAssistant === true,
     resolveInitialBashShellSelection: async () => {
       const executionPreferences = await requestSessionRuntimePreferences(
         context,
@@ -3388,6 +3398,10 @@ async function createRecord(
       assistantCoTPrefillEnabled: startupPreferences.assistantCoTPrefillEnabled,
       // 完整输出：按 session 固定，只影响单次请求参数。
       unfilteredFullOutputEnabled: startupPreferences.unfilteredFullOutputEnabled,
+      // 投影 diff 捕获：debug-only，按 session 固定；含用户原始输入，不进 transcript。
+      neutralTaskProjectionDiffCapture: startupPreferences.neutralTaskProjectionDiffCapture,
+      neutralTaskProjectionDiffCaptureAssistant:
+        startupPreferences.neutralTaskProjectionDiffCaptureAssistant,
       nativeSearchEnhancementsEnabled: startupPreferences.nativeSearchEnhancementsEnabled,
       modelContextBudgetStrategy: startupPreferences.modelContextBudgetStrategy,
       // Memory Settings 是现有 CLI features.memory/use 之外的总开关。只在关闭时

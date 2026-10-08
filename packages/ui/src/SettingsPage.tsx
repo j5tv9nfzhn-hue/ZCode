@@ -686,6 +686,9 @@ export function SettingsPage({
   const neutralTaskProjection = sharedSettings?.neutralTaskProjection === true;
   const assistantCoTPrefillEnabled = sharedSettings?.assistantCoTPrefillEnabled === true;
   const unfilteredFullOutputEnabled = sharedSettings?.unfilteredFullOutputEnabled === true;
+  const projectionDiffCaptureEnabled = sharedSettings?.neutralTaskProjectionDiffCapture === true;
+  const projectionDiffCaptureAssistantEnabled =
+    sharedSettings?.neutralTaskProjectionDiffCaptureAssistant === true;
   const nativeSearchEnhancementsEnabled = sharedSettings?.nativeSearchEnhancementsEnabled !== false;
   const askUserQuestionAutoResolutionEnabled =
     sharedSettings?.askUserQuestionAutoResolutionEnabled !== false;
@@ -1004,6 +1007,37 @@ export function SettingsPage({
         action: "toggle_unfiltered_output",
         trigger: "switch",
         operation: () => updateSharedSettings({ unfilteredFullOutputEnabled: enabled }),
+        completed: {
+          resultSource: "shared_settings",
+          stateAfter: enabled ? "enabled" : "disabled",
+        },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleProjectionDiffCaptureChange = useCallback(
+    async (enabled: boolean) => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "toggle_projection_diff_capture",
+        trigger: "switch",
+        operation: () => updateSharedSettings({ neutralTaskProjectionDiffCapture: enabled }),
+        completed: {
+          resultSource: "shared_settings",
+          stateAfter: enabled ? "enabled" : "disabled",
+        },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleProjectionDiffCaptureAssistantChange = useCallback(
+    async (enabled: boolean) => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "toggle_projection_diff_capture_assistant",
+        trigger: "switch",
+        operation: () =>
+          updateSharedSettings({ neutralTaskProjectionDiffCaptureAssistant: enabled }),
         completed: {
           resultSource: "shared_settings",
           stateAfter: enabled ? "enabled" : "disabled",
@@ -1914,6 +1948,10 @@ export function SettingsPage({
                             assistantCoTPrefillEnabled={assistantCoTPrefillEnabled}
                             neutralTaskProjectionEnabled={neutralTaskProjection}
                             unfilteredFullOutputEnabled={unfilteredFullOutputEnabled}
+                            projectionDiffCaptureEnabled={projectionDiffCaptureEnabled}
+                            projectionDiffCaptureAssistantEnabled={
+                              projectionDiffCaptureAssistantEnabled
+                            }
                             workspaceIdentity={activeWorkspaceIdentity ?? undefined}
                             workspacePath={activeWorkspacePath ?? undefined}
                             onAssistantCoTPrefillEnabledChange={
@@ -1921,6 +1959,10 @@ export function SettingsPage({
                             }
                             onNeutralTaskProjectionChange={handleNeutralTaskProjectionChange}
                             onUnfilteredFullOutputChange={handleUnfilteredFullOutputChange}
+                            onProjectionDiffCaptureChange={handleProjectionDiffCaptureChange}
+                            onProjectionDiffCaptureAssistantChange={
+                              handleProjectionDiffCaptureAssistantChange
+                            }
                           />
                         ) : activeSection === "plugin" ? (
                           <PluginsSection

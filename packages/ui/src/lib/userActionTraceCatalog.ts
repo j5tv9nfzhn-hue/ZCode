@@ -70,6 +70,8 @@ export const SETTINGS_USER_ACTION_FEATURES = {
     "toggle_neutral_task_projection",
     "toggle_assistant_cot_prefill",
     "toggle_unfiltered_output",
+    "toggle_projection_diff_capture",
+    "toggle_projection_diff_capture_assistant",
   ],
   "settings.search": ["toggle_native_search"],
   "settings.network": ["save_http_proxy", "save_no_proxy", "save_ca_certificate"],

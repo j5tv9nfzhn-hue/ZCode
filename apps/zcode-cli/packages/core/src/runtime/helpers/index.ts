@@ -22,6 +22,7 @@ export * from "./media-observability.js";
 export * from "./neutral-task-projection.js";
 export * from "./assistant-cot-prefill.js";
 export * from "./model-output-budget.js";
+export * from "./neutral-task-projection-diff.js";
 export * from "./provider-request-messages.js";
 export * from "./model-tool-call-validation.js";
 export * from "./runtime-provider-request-messages.js";
