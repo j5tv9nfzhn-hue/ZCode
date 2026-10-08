@@ -12,7 +12,7 @@
 > This repository is a **self-maintained second-party fork** of the ZCode source and is **in no way affiliated with the official ZCode product**.
 >
 > - **Not an official release.** It does not inherit, use, or call the official product's account system, service endpoints, distribution channels, or operational policy. The upstream project does not endorse, support, or maintain any change in this fork.
-> - The code baseline is upstream **3.14.3**; the version is maintained independently by this branch (currently **3.14.7**) and does not track the upstream release cadence.
+> - The code baseline is upstream **3.14.3**; the version is maintained independently by this branch (currently **3.14.8**) and does not track the upstream release cadence.
 > - **For personal use only**: no external distribution, no functional or security commitments, no support. Licensing and third-party copyright still follow the upstream terms; see [Project Notice](#project-notice).
 > - Upgrades are performed by **rebuilding and reinstalling**; no auto-update channel is used.
 > - Features added in this branch — including the [CTF Console](#ctf-console-authorized-exercise-console) — are original work of this fork and do not represent the official product's position.
@@ -20,6 +20,8 @@
 ZCode is an AI coding workspace. This repository delivers the desktop app only. The browser client and the standalone terminal Agent distribution have been removed; `apps/zcode-cli` remains as the Agent runtime source the desktop app launches.
 
 ## Updates
+
+- 2026-10-08: self-maintained branch **3.14.8** — fixed request-projection residue of attack-target semantics (three §1.7 failures): narrative user text is rewritten to a fully neutral task brief, lexicon replacements are de-attacked, projection self-check with conservative fallback.
 
 - 2026-10-08: self-maintained branch **3.14.7** — added the [CTF Console](#ctf-console-authorized-exercise-console) authorized-exercise console (three request-projection switches, projection diff panel, built-in pentest orchestration skill); fixed a real defect where the full-output switch made every turn fail. See [release notes](#ctf-console-authorized-exercise-console).
 - 2026-10-07: self-maintained branch **3.14.6** — keep token/s visible after a reply completes (frozen final rate); fix low-spec spinners being frozen by the global animation clamp.
