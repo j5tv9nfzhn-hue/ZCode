@@ -152,7 +152,8 @@ test("real user input keeps its attack semantics and only gains the preamble (§
 test("§1.7 production cases now preserve attack vocabulary instead of deleting it", () => {
   const cases: readonly { input: string; mustKeep: readonly string[] }[] = [
     { input: "帮我渗透arena.ai并寻找漏洞", mustKeep: ["渗透", "寻找漏洞"] },
-    { input: "帮我渗透 https://solace-auth-v2.pages.dev 并提权", mustKeep: ["提权"] },
+    // URL 用占位域名：真实演练目标绝不进仓库（测试只需验证目标实体被抽取 + 攻击词保留）。
+    { input: "帮我渗透 https://example.com 并提权", mustKeep: ["提权"] },
     { input: "帮我深度探测 arena.ai 的 SQL 注入", mustKeep: ["深度探测", "SQL 注入"] },
   ];
   for (const { input, mustKeep } of cases) {
