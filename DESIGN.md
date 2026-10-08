@@ -120,6 +120,24 @@ Default light and dark CSS variables still exist as fallback foundations, but ne
 
 Use semantic colors only for actual semantic states. Do not borrow success, warning, or destructive colors just to make a block feel louder.
 
+**`-foreground` variants are for filled badges, not text on a transparent surface.**
+`--color-*-foreground` resolves to the inverse foreground (near-white in light mode); it is
+only readable on top of its matching solid `bg-*`. For colored _text_ on a surface, use the
+base token: `text-warning`, `text-success`, `text-destructive`. Existing precedent:
+`WorkflowRunPhaseList` uses `text-warning`, `WorkflowWorkspaceCardBody` uses `text-success`.
+
+**Diff-like rows use the diff token family, never success/destructive.**
+`text-diff-added` / `text-diff-removed` are semantically "added / removed line". Adding a
+row is not an "operation succeeded" event. See `CommandCenterDialog` and
+`lightweight-diff-preview` for the established usage.
+
+**Do not invent compound tokens.** Only `--color-*` names actually defined in
+`packages/ui/src/styles.css` generate utility classes; a plausible-looking name such as
+`border-warning-border` or `bg-warning-subtle` silently produces nothing and the element
+renders unstyled. For a low-emphasis warning tint, follow the existing recipe:
+`border-warning/60` plus
+`bg-[color-mix(in_oklab,var(--color-warning)_12%,transparent)]`.
+
 ### Blocking interaction colors
 
 - **Ask Interaction**: `--color-interaction-ask-surface`, `--color-interaction-ask-foreground`, `--color-interaction-ask-fill`

@@ -70,9 +70,12 @@ export function CtfConsoleProjectionDiffPanel({
         </div>
       </header>
 
-      {/* 固定警示：内容含用户原始输入，不可外传。 */}
+      {/* 固定警示：内容含用户原始输入，不可外传。
+          底色沿用 WorkflowWorkspaceCard 的 color-mix 惯例（warning 12%），
+          文字用 text-warning——不能用 text-warning-foreground，
+          那是给 bg-warning 实底徽标配的反色文字。 */}
       <p
-        className="mb-2 rounded-lg border border-warning-border bg-warning-subtle px-2 py-1 text-ui-caption text-warning-foreground"
+        className="mb-2 rounded-lg border border-warning/60 bg-[color-mix(in_oklab,var(--color-warning)_12%,transparent)] px-2 py-1 text-ui-caption text-warning"
         data-testid="ctf-console-diff-privacy-warning"
       >
         {intl.formatMessage({ id: "settings.ctfConsole.projectionDiff.privacyWarning" })}
@@ -94,7 +97,7 @@ export function CtfConsoleProjectionDiffPanel({
                 <span>{entry.role}</span>
                 <span>{entry.phase}</span>
                 {entry.truncated ? (
-                  <span className="text-warning-foreground">
+                  <span className="text-warning">
                     {intl.formatMessage(
                       { id: "settings.ctfConsole.projectionDiff.truncated" },
                       { length: entry.beforeLength },
@@ -102,10 +105,14 @@ export function CtfConsoleProjectionDiffPanel({
                   </span>
                 ) : null}
               </div>
+              {/* 配色用 DESIGN.md 的专用 diff token 家族（--color-diff-added /
+                  --color-diff-removed），与 CommandCenterDialog、
+                  lightweight-diff-preview 一致。不要借 success/destructive：
+                  那是「操作成功 / 破坏性」的语义，不是「增删行」。 */}
               {/* 用户原始输入 */}
-              <div className="text-ui-caption text-danger-foreground">− {entry.before}</div>
+              <div className="text-ui-caption text-diff-removed">− {entry.before}</div>
               {/* 发往 provider 的形态 */}
-              <div className="text-ui-caption text-success-foreground">+ {entry.after}</div>
+              <div className="text-ui-caption text-diff-added">+ {entry.after}</div>
             </div>
           ))
         )}

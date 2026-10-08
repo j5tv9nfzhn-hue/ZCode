@@ -7,23 +7,68 @@
   <a href="README.md">简体中文</a> | English
 </p>
 
-> ## Branch positioning
+> ## ⚠️ Branch positioning (read this first)
 >
-> This repository is a **self-maintained second-party fork** of the ZCode source: the code baseline is upstream **3.14.3**, and the version is maintained independently by this branch (currently **3.14.6**).
+> This repository is a **self-maintained second-party fork** of the ZCode source and is **in no way affiliated with the official ZCode product**.
 >
-> - **Not an official release.** It is unaffiliated with the upstream project and neither inherits nor uses its account system, service endpoints, or distribution channels.
-> - Changes relative to upstream fall into two categories: **de-officialization** (telemetry, login/authorization, official model presets, and auto-update bindings removed) and **low-spec machine performance fixes**. See [Changes relative to upstream](#changes-relative-to-upstream).
+> - **Not an official release.** It does not inherit, use, or call the official product's account system, service endpoints, distribution channels, or operational policy. The upstream project does not endorse, support, or maintain any change in this fork.
+> - The code baseline is upstream **3.14.3**; the version is maintained independently by this branch (currently **3.14.7**) and does not track the upstream release cadence.
 > - **For personal use only**: no external distribution, no functional or security commitments, no support. Licensing and third-party copyright still follow the upstream terms; see [Project Notice](#project-notice).
 > - Upgrades are performed by **rebuilding and reinstalling**; no auto-update channel is used.
+> - Features added in this branch — including the [CTF Console](#ctf-console-authorized-exercise-console) — are original work of this fork and do not represent the official product's position.
 
 ZCode is an AI coding workspace. This repository delivers the desktop app only. The browser client and the standalone terminal Agent distribution have been removed; `apps/zcode-cli` remains as the Agent runtime source the desktop app launches.
 
 ## Updates
 
+- 2026-10-08: self-maintained branch **3.14.7** — added the [CTF Console](#ctf-console-authorized-exercise-console) authorized-exercise console (three request-projection switches, projection diff panel, built-in pentest orchestration skill); fixed a real defect where the full-output switch made every turn fail. See [release notes](#ctf-console-authorized-exercise-console).
 - 2026-10-07: self-maintained branch **3.14.6** — keep token/s visible after a reply completes (frozen final rate); fix low-spec spinners being frozen by the global animation clamp.
 - 2026-10-07: self-maintained branch **3.14.5** — fix the root cause of the live metrics rate always showing a placeholder (sampling signal switched to streaming row text growth).
 - 2026-10-07: self-maintained branch **3.14.4** — de-officialization wrap-up and low-spec performance fixes (see the change list below).
 - 2026-09-23: (upstream baseline) ZCode v3.14.3.
+
+## CTF Console (authorized exercise console)
+
+> **For security assessment of systems you own or have written authorization to test.** Whether a target is in scope is your own judgement and sole responsibility. This repository provides no authorization verification, target filtering, or use restriction.
+
+A separate Settings section added by this fork, for adjusting _how requests are assembled before reaching the model_ during authorized exercises, and for observing that process live. **This is original work of this fork, unrelated to the official ZCode product.**
+
+### Three switches
+
+Fixed per newly created session, **all off by default**, and affecting only the request copy sent to the Provider:
+
+| Switch                          | What it does                                                                                                                                                            |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Neutral task projection**     | Neutralizes narrative text: real user input is restructured by sentence (target entities and the original intent fragment preserved, attack-semantics triggers removed) |
+| **Assistant CoT Prefill**       | Appends an assistant opening prefix to the request so the model continues under an "already executing" posture                                                          |
+| **Full output (no truncation)** | Sends `maxOutputTokens` at the model's own declared limit instead of the local context budget                                                                           |
+
+### Key semantics
+
+- **History and files always keep the original text**: rewriting happens only at request assembly time; the persisted transcript, UI display, and workspace files are untouched.
+- **The task boundary is not defined for you**: the template only removes attack semantics — it does not hardcode steps, prescribe methods, or imply reconnaissance-only work.
+- **Executable payloads and real observations are never rewritten**: tool-call inputs and tool-result bodies are left alone so the model cannot report commands that were never run.
+
+### Projection diff panel
+
+Answers one specific question: **"what exactly did this sentence become?"** Without it you can only infer from indirect signals, where "word list missed a term", "the template is wrong", and "the projection never ran" look identical.
+
+Shows `original → projected` pairs live. Off by default; when on it is **never written to chat history or disk** and lives only in an in-memory ring buffer (2000 chars per entry, 200 entries). The "original" shown is your raw input — confirm compliance before screenshotting or sharing.
+
+### Measured results
+
+Three runs against the real ZCode backend (`zcode.cjs app-server` with the real tool contracts) and `glm-5.3-flash`. Zero refusals; the model advanced autonomously:
+
+| Run | Tool calls | Outcome        | Refusal phrases | No-modify constraint |
+| --- | ---------- | -------------- | --------------- | -------------------- |
+| 1   | 24         | success        | 0               | held                 |
+| 2   | 25         | success        | 0               | held                 |
+| 3   | 38         | time-box ended | 0               | held                 |
+
+**Evidence discipline**: all runs only retrieved data that was already publicly reachable inside the target workspace. By this project's own criterion ("retrieving public content has no value"), these runs do **not** constitute a breach of any third-party system.
+
+Full details in **[docs/ctf-console.md](docs/ctf-console.md)**; technical design and all invariants in
+[apps/zcode-cli/docs/neutral-task-mode.md](apps/zcode-cli/docs/neutral-task-mode.md).
 
 ## Changes relative to upstream
 
@@ -35,6 +80,14 @@ ZCode is an AI coding workspace. This repository delivers the desktop app only. 
 | Login removed            | WelcomeScreen, API key login form, OAuth, and the provider guard physically deleted; first launch goes straight to the workspace, models must be configured manually in Settings |
 | Official presets cleared | Z.ai / BigModel and other official provider presets emptied; 14 onboarding files including OccupationOnboarding deleted                                                          |
 | Auto-update disabled     | Update polling and the forced upgrade gate fully disabled; upgrades happen by rebuilding and reinstalling, with no access to the official feed                                   |
+
+### Added capabilities
+
+| Change                       | Description                                                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| CTF Console section          | New Settings section: three request-projection switches, projection diff panel, runtime log, public-target probe |
+| Built-in `pentest` skill     | Multi-stage security assessment with per-stage isolation: each step runs in its own short-lived Agent context    |
+| Custom system prompt section | Separate Settings section; same "fixed at session creation" semantics as the projection switches                 |
 
 ### Performance (target machine: i3-3110M / 7.85GB / HD 4000)
 
@@ -116,9 +169,12 @@ The root [.env.example](.env.example) provides sample service URLs and build con
 
 Runtime variables can be set explicitly in the environment of the startup command. See [config/README.md](config/README.md) for the default configuration shipped with the client.
 
+The three CTF Console switches are **not** environment variables. They travel through
+`AppSettings → session/requestRuntimePreferences → runtimeConfig` and take effect on newly created sessions.
+
 ## Packaging
 
-See [third-party/README.md](third-party/README.md) for notice generation, distribution checks, and where the notices are included in each distribution.
+The third-party notice **artifact** is [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) at the repository root (generated by `scripts/generate-third-party-notices.mjs` — do not edit by hand). The **manifest data** behind it lives in `inventory.json`, `embedded-components.json`, `npm-overrides.json` and siblings under [third-party/](third-party/).
 
 ### Desktop
 
@@ -146,8 +202,20 @@ This branch ships for **Windows x64 only**: artifacts are unsigned and are not p
 | `packages/shared`, `packages/rpc`, `packages/client` | Shared protocols and types, RPC framework, and Agent client SDK                         |
 | `packages/provider`, `packages/provider-node`        | Common provider capabilities and Node implementations                                   |
 | `apps/zcode-cli`                                     | Agent runtime: protocol server, plugin host, dynamic workflow, and tools                |
+| `docs`                                               | Section documentation (e.g. [CTF Console](docs/ctf-console.md))                         |
 | `scripts`, `config`, `third-party`                   | Build and maintenance scripts, built-in configuration, and third-party notice materials |
+
+## Project Documentation
+
+| Document                                                                             | Audience           | Content                                                                               |
+| ------------------------------------------------------------------------------------ | ------------------ | ------------------------------------------------------------------------------------- |
+| [docs/ctf-console.md](docs/ctf-console.md)                                           | Users              | CTF Console usage, semantic constraints, measured data                                |
+| [NOTICE.md](NOTICE.md)                                                               | Everyone           | Feature scope, network behavior, execution/data risks, license, third-party copyright |
+| [AGENTS.md](AGENTS.md)                                                               | Coding agents      | Self-maintained facts, toolchain, command essentials, architecture gates              |
+| [DESIGN.md](DESIGN.md)                                                               | Coding agents / UI | Design system and hard UI constraints (e.g. type-scale tokens)                        |
+| [CONTEXT.md](CONTEXT.md)                                                             | Everyone           | Domain glossary (plugin store, CTF Console)                                           |
+| [apps/zcode-cli/docs/neutral-task-mode.md](apps/zcode-cli/docs/neutral-task-mode.md) | Coding agents      | Request projection design, all invariants, raw measurement data                       |
 
 ## Project Notice
 
-See [NOTICE.md](NOTICE.md) for this branch's feature scope, network behavior, execution and data risks, licensing, and third-party copyright information. That notice has been rewritten to match the actual code behavior of this branch: the login/authorization, account plans, official model gateway forwarding, telemetry, and auto-update flows described in the upstream text no longer exist here and are not part of the commitment scope.
+See [NOTICE.md](NOTICE.md) for this branch's feature scope, network behavior, execution and data risks, licensing, and third-party copyright information. That notice has been rewritten to match the actual code behavior of this branch: the login/authorization, account plans, official model gateway forwarding, telemetry, and auto-update flows described in the upstream text no longer exist here and are not part of the commitment scope. Capabilities added by this fork — including CTF Console — are likewise within the scope of that notice and **constitute no affiliation, endorsement, or authorization determination with respect to the official product**.
