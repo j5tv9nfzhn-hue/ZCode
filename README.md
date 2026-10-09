@@ -40,13 +40,13 @@ ZCode 是 AI 编程工作台，本仓库只交付桌面端。浏览器界面与�
 
 按新建会话固定，**默认全部关闭**，只影响发往 Provider 的那一份请求副本：
 
-| 开关                      | 作用                                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------------------- |
-| **中性任务投影**          | 对叙事文本做中性化：真实输入按句式重构（保留目标实体与原始意图片段，去除攻击语义触发词） |
-| **思维链预填 Prefill**     | 请求末尾追加 assistant 起始前缀，让模型在「已开始执行」的预设下续写                      |
-| **完整输出（不截断）**    | 按模型自身声明的上限下发 `maxOutputTokens`，不受本地上下文预算截断                       |
-| **投影 diff 捕获** ×2     | 记录「原文 → 投影后」配对（user 侧 / assistant 侧两级链式开关，调试用）                   |
-| **渗透编排**              | 注册结构化编排工具与三个编排子代理（goals / planner / worker）                           |
+| 开关                   | 作用                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| **中性任务投影**       | 对叙事文本做中性化：真实输入按句式重构（保留目标实体与原始意图片段，去除攻击语义触发词） |
+| **思维链预填 Prefill** | 请求末尾追加 assistant 起始前缀，让模型在「已开始执行」的预设下续写                      |
+| **完整输出（不截断）** | 按模型自身声明的上限下发 `maxOutputTokens`，不受本地上下文预算截断                       |
+| **投影 diff 捕获** ×2  | 记录「原文 → 投影后」配对（user 侧 / assistant 侧两级链式开关，调试用）                  |
+| **渗透编排**           | 注册结构化编排工具与三个编排子代理（goals / planner / worker）                           |
 
 另有一块**授权作用域登记表**：一行一条确切 IP 或主机名，登记即断言有权测试它（责任在使用者），命中时请求会注入一句作用域事实，未命中不声明任何授权。
 
@@ -212,18 +212,18 @@ sudo xattr -rd com.apple.quarantine /Applications/ZCode.app
 
 ## 仓库结构
 
-| 目录                                                 | 职责                                                  |
-| ---------------------------------------------------- | ----------------------------------------------------- |
-| `packages/desktop`                                   | Electron Main、Host、Renderer 与桌面打包              |
-| `packages/server`                                    | 远程工作区后端（SSH/WSL/Docker）与远程 stdio 服务端   |
-| `packages/ui`                                        | 共享 React 组件、hooks 与 Zustand 状态                |
-| `packages/services`                                  | 业务服务与持久化                                      |
-| `packages/shared`、`packages/rpc`、`packages/client` | 共享协议和类型、RPC 框架、Agent 客户端 SDK            |
-| `packages/provider`、`packages/provider-node`        | Provider 公共能力与 Node 实现                         |
-| `packages/model-option-map`                          | 模型能力选项映射                                     |
-| `apps/zcode-cli`                                     | Agent 运行时（协议服务端、plugin-host、工作流、工具） |
+| 目录                                                 | 职责                                                      |
+| ---------------------------------------------------- | --------------------------------------------------------- |
+| `packages/desktop`                                   | Electron Main、Host、Renderer 与桌面打包                  |
+| `packages/server`                                    | 远程工作区后端（SSH/WSL/Docker）与远程 stdio 服务端       |
+| `packages/ui`                                        | 共享 React 组件、hooks 与 Zustand 状态                    |
+| `packages/services`                                  | 业务服务与持久化                                          |
+| `packages/shared`、`packages/rpc`、`packages/client` | 共享协议和类型、RPC 框架、Agent 客户端 SDK                |
+| `packages/provider`、`packages/provider-node`        | Provider 公共能力与 Node 实现                             |
+| `packages/model-option-map`                          | 模型能力选项映射                                          |
+| `apps/zcode-cli`                                     | Agent 运行时（协议服务端、plugin-host、工作流、工具）     |
 | `docs`                                               | 分区文档（[CTF Console](docs/ctf-console.md) 为权威手册） |
-| `scripts`、`config`                                  | 构建维护脚本与内置配置                               |
+| `scripts`、`config`                                  | 构建维护脚本与内置配置                                    |
 
 ## 项目文档
 

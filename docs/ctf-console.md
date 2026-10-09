@@ -17,14 +17,14 @@ CTF Console 是本自维护分支在设置页新增的独立分区。它有三�
 
 按新建会话固定，**默认全部关闭**，缺席即关闭（fail-closed）。
 
-| 开关                              | 设置项                                     | 作用                                                             |
-| --------------------------------- | ------------------------------------------ | ---------------------------------------------------------------- |
-| 中性任务投影                      | `neutralTaskProjection`                    | 对叙事文本做中性化改写；其余文本只过词表层                       |
-| 思维链预填 Prefill                | `assistantCoTPrefillEnabled`               | 请求末尾追加 assistant 起始前缀，让模型在「已开始执行」预设下续写 |
-| 完整输出（不本地截断）            | `unfilteredFullOutputEnabled`              | 按模型自身声明的上限下发 `maxOutputTokens`                       |
-| 投影 diff 捕获（调试用）          | `neutralTaskProjectionDiffCapture`         | 记录「原文 → 投影后」配对                                       |
-| 同时捕获 assistant 侧             | `neutralTaskProjectionDiffCaptureAssistant` | 把捕获范围扩到 assistant 输出                                    |
-| 渗透编排                          | `pentestOrchestrationEnabled`              | 注册结构化编排工具与三个编排子代理                               |
+| 开关                     | 设置项                                      | 作用                                                              |
+| ------------------------ | ------------------------------------------- | ----------------------------------------------------------------- |
+| 中性任务投影             | `neutralTaskProjection`                     | 对叙事文本做中性化改写；其余文本只过词表层                        |
+| 思维链预填 Prefill       | `assistantCoTPrefillEnabled`                | 请求末尾追加 assistant 起始前缀，让模型在「已开始执行」预设下续写 |
+| 完整输出（不本地截断）   | `unfilteredFullOutputEnabled`               | 按模型自身声明的上限下发 `maxOutputTokens`                        |
+| 投影 diff 捕获（调试用） | `neutralTaskProjectionDiffCapture`          | 记录「原文 → 投影后」配对                                         |
+| 同时捕获 assistant 侧    | `neutralTaskProjectionDiffCaptureAssistant` | 把捕获范围扩到 assistant 输出                                     |
+| 渗透编排                 | `pentestOrchestrationEnabled`               | 注册结构化编排工具与三个编排子代理                                |
 
 后两级是**链式依赖**：投影 diff 捕获依赖投影总开关，assistant 侧捕获依赖投影 diff 捕获。上游未开启时下级开关处于禁用态，而不是「静默无效」。
 
@@ -38,13 +38,13 @@ CTF Console 是本自维护分支在设置页新增的独立分区。它有三�
 
 ### 编排与观测面板
 
-| 面板                | 作用                                                                       |
-| ------------------- | -------------------------------------------------------------------------- |
-| 覆盖度              | `tested/denominator` 比例 + 进度条 + 意图计数分解；分母为 0 时显示「尚未登记资产」 |
-| 探索图 / 产物       | 目标（已达成/未达成）、待执行与执行中意图、已确认漏洞、近期事实、用户提示 |
-| 投影 diff           | 见下节                                             |
-| 运行时日志          | 会话事件流，支持按级别与关键字过滤             |
-| 公网目标测试入口    | 勾选确认与风险提示                                 |
+| 面板             | 作用                                                                               |
+| ---------------- | ---------------------------------------------------------------------------------- |
+| 覆盖度           | `tested/denominator` 比例 + 进度条 + 意图计数分解；分母为 0 时显示「尚未登记资产」 |
+| 探索图 / 产物    | 目标（已达成/未达成）、待执行与执行中意图、已确认漏洞、近期事实、用户提示          |
+| 投影 diff        | 见下节                                                                             |
+| 运行时日志       | 会话事件流，支持按级别与关键字过滤                                                 |
+| 公网目标测试入口 | 勾选确认与风险提示                                                                 |
 
 编排的机制层细节（数据模型、工具契约、不变量）见
 [apps/zcode-cli/docs/pentest-orchestration.md](../apps/zcode-cli/docs/pentest-orchestration.md)。
