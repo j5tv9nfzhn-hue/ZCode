@@ -21,6 +21,8 @@ import {
   AgentRuntime,
   PermissionService,
   buildPluginReferenceCatalog,
+  createPentestOrchestrationAgentProfiles,
+  type AgentRuntimeDeps,
   type AmendWorkflowRunSettingsInput,
   type ResumeSessionResult,
 } from "@zcode/core";
@@ -94,8 +96,7 @@ import { resolveBuiltInNodeReplMcpServers } from "./built-in-node-repl.js";
 import { resolveZCodeCustomCommandPrompt } from "../custom-command-prompt.js";
 import { resolveZCodeBuiltinPromptCommand } from "../builtin-prompt-command.js";
 import { collectDisabledPaths } from "../skill-command-overrides.js";
-import { loadPluginAgentProfiles, loadZCodeAgentProfiles } from "../subagents.js";
-import { createRuntimeAiSdkModelExecutionConfig } from "../model-config.js";
+import { loadPluginAgentProfiles, loadZCodeAgentProfiles } from "../subagents.js";import { createRuntimeAiSdkModelExecutionConfig } from "../model-config.js";
 import { ApiProviderModelRuntime } from "./provider-registry-model-runtime.js";
 import {
   completeAppStartup,
@@ -232,7 +233,15 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       workingDirectory,
     });
     // 用户目录已在 loader 前完成原地迁移；不能给项目/插件旧身份加内存兼容旁路。
-    const subagentProfiles = [...zcodeSubagentProfiles, ...pluginSubagentProfiles];
+    // 渗透编排开启时追加三个内置角色 profile（goals/planner/worker）——只在开关开启的
+    // 会话可见，普通会话的 agent 列表零影响（对齐端口门控的 fail-closed 语义）。
+    const subagentProfiles = [
+      ...zcodeSubagentProfiles,
+      ...pluginSubagentProfiles,
+      ...(options.runtimeConfig?.pentestOrchestrationEnabled === true
+        ? createPentestOrchestrationAgentProfiles()
+        : []),
+    ];
     const ownsSessionStore = options.sessionStore === undefined;
     const sessionStore =
       options.sessionStore ?? (await openStartupSessionStore(configResult, startupTimer));
@@ -772,6 +781,21 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       dynamicWorkflowRunPort,
       dynamicWorkflowSnippetPort,
       modelCatalogPort,
+      // 渗透编排状态端口：只在编排开关开启、且 store 提供该能力时注入。
+      // 端口在场即 core 侧 9 个编排产物工具的注册门（见 registerBuiltInTools）。
+      ...(runtimeConfig.pentestOrchestrationEnabled === true &&
+      typeof (sessionStore as unknown as { pentestOrchestrationPort?: unknown })
+        .pentestOrchestrationPort === "function"
+        ? {
+            pentestOrchestrationPort: (
+              sessionStore as unknown as {
+                pentestOrchestrationPort(
+                  taskId: string,
+                ): AgentRuntimeDeps["pentestOrchestrationPort"];
+              }
+            ).pentestOrchestrationPort(sessionId),
+          }
+        : {}),
       automationPort: options.automationPort,
       offPeakPort: options.offPeakPort,
       appVersion,

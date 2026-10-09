@@ -26,7 +26,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "node ../../scripts/clean-dist.mjs",
-    "test": "tsx --tsconfig ../../../../tsconfig.base.json --test test/neutral-task-projection.test.ts test/assistant-cot-prefill.test.ts test/model-output-budget.test.ts test/neutral-task-projection-diff.test.ts test/tool-input-envelope-unwrap.test.ts test/pentest-orchestration-tools.test.ts",
+    "test": "tsx --tsconfig ../../../../tsconfig.base.json --test test/neutral-task-projection.test.ts test/assistant-cot-prefill.test.ts test/model-output-budget.test.ts test/neutral-task-projection-diff.test.ts test/tool-input-envelope-unwrap.test.ts test/pentest-orchestration-tools.test.ts test/pentest-orchestration-profiles.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src --no-ignore",
     "lint:fix": "oxlint --fix src --no-ignore"

@@ -2187,6 +2187,9 @@ const enUS: Record<string, string> = {
   "settings.ctfConsole.allowlist.save": "Save registry",
   "settings.ctfConsole.allowlist.dropped":
     "These entries are not an exact hostname / IP and were ignored: {entries}",
+  "settings.ctfConsole.pentestOrchestration.label": "Pentest orchestration",
+  "settings.ctfConsole.pentestOrchestration.description":
+    "Register the structured orchestration tools (record_fact / report_finding / add_intent / insert_assets / ...) and the three orchestration subagents (goals / planner / worker). Off by default; only new sessions pick it up.",
   "settings.ctfConsole.log.title": "Live logs",
   "settings.ctfConsole.log.live": "session events connected",
   "settings.ctfConsole.log.offline": "offline (console-local events only)",

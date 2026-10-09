@@ -232,6 +232,13 @@ export interface AgentRuntimeConfig {
    */
   neutralTaskTargetAllowlist?: readonly string[];
   /**
+   * 渗透编排开关（CTF Console，默认关闭）。开启时注入 PentestOrchestrationPort，
+   * core 侧据此注册 9 个编排产物工具（record_fact / report_finding / add_intent / ...），
+   * 并把三个编排 subagent profile（goals/planner/worker）加入可用 agent 列表。
+   * 缺席即关闭（fail-closed），普通会话工具面零影响。
+   */
+  pentestOrchestrationEnabled?: boolean;
+  /**
    * Assistant CoT Prefill：请求组装末尾追加一条伪造的 assistant 消息
    * （reasoning block + text 前缀），让模型在「已开始执行」的预设下续写，
    * 跳过首轮拒绝评估。不改变历史、不拦截工具执行，关闭即停参与。

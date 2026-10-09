@@ -335,6 +335,11 @@ export interface AppSettings {
    * 丢弃），匹配侧（shared neutral-task-scope）同样兜底清洗。
    */
   neutralTaskTargetAllowlist?: string[];
+  /**
+   * 渗透编排（CTF Console）：开启时注册 9 个结构化产物工具（record_fact / report_finding /
+   * add_intent / ...）并加入三个编排 subagent 角色。默认关闭，新建会话生效。
+   */
+  pentestOrchestrationEnabled?: boolean;
   /** Assistant CoT Prefill：请求末尾预置 assistant 思考前缀；默认关闭，新建会话生效。 */
   assistantCoTPrefillEnabled?: boolean;
   /** 完整输出：请求不下发 maxOutputTokens，由 provider 按模型上限生成；默认关闭。 */

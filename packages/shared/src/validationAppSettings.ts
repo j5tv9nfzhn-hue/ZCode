@@ -469,6 +469,7 @@ const appSettingsObjectSchema = z.object({
    * 大小写归一、限量）在 settingService.update 用 shared 归一函数完成并回报 dropped。
    */
   neutralTaskTargetAllowlist: z.array(z.string()).default([]),
+  pentestOrchestrationEnabled: z.boolean().default(false),
   assistantCoTPrefillEnabled: z.boolean().default(false),
   unfilteredFullOutputEnabled: z.boolean().default(false),
   neutralTaskProjectionDiffCapture: z.boolean().default(false),
@@ -562,6 +563,7 @@ export const appSettingsPatchSchema = z.object({
   customSystemPrompt: nonEmptyStringSchema.optional(),
   neutralTaskProjection: z.boolean().optional(),
   neutralTaskTargetAllowlist: z.array(z.string()).optional(),
+  pentestOrchestrationEnabled: z.boolean().optional(),
   assistantCoTPrefillEnabled: z.boolean().optional(),
   unfilteredFullOutputEnabled: z.boolean().optional(),
   neutralTaskProjectionDiffCapture: z.boolean().optional(),

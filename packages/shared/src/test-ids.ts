@@ -391,6 +391,8 @@ export const TID_SETTINGS_PROJECTION_DIFF_CAPTURE_ASSISTANT_SWITCH =
   "settings-projection-diff-capture-assistant-switch";
 /** CTF Console 公网目标测试提交按钮 */
 export const TID_SETTINGS_CTF_PROBE_SUBMIT = "settings-ctf-probe-submit";
+/** 渗透编排总开关（CTF Console，默认关闭）。 */
+export const TID_SETTINGS_PENTEST_ORCHESTRATION_SWITCH = "settings-pentest-orchestration-switch";
 /** Memory Workspace Scope 菜单触发器 */
 export const TID_SETTINGS_MEMORY_SCOPE_TRIGGER = "settings-memory-scope-trigger";
 /** Memory Workspace Scope 图标 */

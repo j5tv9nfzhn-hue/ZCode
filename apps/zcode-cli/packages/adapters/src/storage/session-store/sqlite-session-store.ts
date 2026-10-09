@@ -28,6 +28,7 @@ import type {
   ModelUsageRecord,
   PartId,
   PermissionRuleset,
+  PentestOrchestrationPort,
   ProjectId,
   SessionEntryInfo,
   SessionEntryType,
@@ -91,6 +92,7 @@ import { ensureParentDir, getDefaultSessionDbPath } from "./paths.js";
 import { maybeThrowStorageFsFault } from "../fs-fault-injection.js";
 import * as debugRepository from "./repositories/debug.js";
 import { createDwfJournalStore } from "./repositories/dwf-journal.js";
+import { createPentestOrchestrationPort } from "./repositories/pentest-orchestration-port.js";
 import * as inputHistoryRepository from "./repositories/input-history.js";
 import * as localSettingsRepository from "./repositories/local-settings.js";
 import * as messageRepository from "./repositories/messages.js";
@@ -996,6 +998,14 @@ export class SqliteSessionStore
   workflowJournalStore(): JournalStorePort {
     this.dwfJournalStore ??= createDwfJournalStore(this.db);
     return this.dwfJournalStore;
+  }
+
+  /**
+   * 渗透编排状态端口（po_* 表）。按 task（= session id）绑定，返回端口对象本身而不是
+   * 逐方法转发——与 workflowJournalStore 同款。端口在场即是 core 侧 9 个编排工具的注册门。
+   */
+  pentestOrchestrationPort(taskId: SessionId): PentestOrchestrationPort {
+    return createPentestOrchestrationPort(this.db, taskId);
   }
 
   debugMigrationIds(): string[] {

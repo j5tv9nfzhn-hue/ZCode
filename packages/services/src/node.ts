@@ -2273,6 +2273,7 @@ export function createLocalServices(options: {
               ...(settings.neutralTaskTargetAllowlist?.length
                 ? { neutralTaskTargetAllowlist: settings.neutralTaskTargetAllowlist }
                 : {}),
+              pentestOrchestrationEnabled: settings.pentestOrchestrationEnabled === true,
               assistantCoTPrefillEnabled: settings.assistantCoTPrefillEnabled === true,
               unfilteredFullOutputEnabled: settings.unfilteredFullOutputEnabled === true,
               neutralTaskProjectionDiffCapture: settings.neutralTaskProjectionDiffCapture === true,

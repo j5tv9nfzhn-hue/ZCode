@@ -690,6 +690,7 @@ export function SettingsPage({
   const projectionDiffCaptureAssistantEnabled =
     sharedSettings?.neutralTaskProjectionDiffCaptureAssistant === true;
   const neutralTaskTargetAllowlist = sharedSettings?.neutralTaskTargetAllowlist ?? [];
+  const pentestOrchestrationEnabled = sharedSettings?.pentestOrchestrationEnabled === true;
   const nativeSearchEnhancementsEnabled = sharedSettings?.nativeSearchEnhancementsEnabled !== false;
   const askUserQuestionAutoResolutionEnabled =
     sharedSettings?.askUserQuestionAutoResolutionEnabled !== false;
@@ -993,6 +994,21 @@ export function SettingsPage({
         action: "toggle_assistant_cot_prefill",
         trigger: "switch",
         operation: () => updateSharedSettings({ assistantCoTPrefillEnabled: enabled }),
+        completed: {
+          resultSource: "shared_settings",
+          stateAfter: enabled ? "enabled" : "disabled",
+        },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handlePentestOrchestrationChange = useCallback(
+    async (enabled: boolean) => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "toggle_pentest_orchestration",
+        trigger: "switch",
+        operation: () => updateSharedSettings({ pentestOrchestrationEnabled: enabled }),
         completed: {
           resultSource: "shared_settings",
           stateAfter: enabled ? "enabled" : "disabled",
@@ -1968,6 +1984,7 @@ export function SettingsPage({
                               projectionDiffCaptureAssistantEnabled
                             }
                             targetAllowlist={neutralTaskTargetAllowlist}
+                            pentestOrchestrationEnabled={pentestOrchestrationEnabled}
                             workspaceIdentity={activeWorkspaceIdentity ?? undefined}
                             workspacePath={activeWorkspacePath ?? undefined}
                             onAssistantCoTPrefillEnabledChange={
@@ -1980,6 +1997,7 @@ export function SettingsPage({
                               handleProjectionDiffCaptureAssistantChange
                             }
                             onTargetAllowlistSave={handleNeutralTaskTargetAllowlistSave}
+                            onPentestOrchestrationChange={handlePentestOrchestrationChange}
                           />
                         ) : activeSection === "plugin" ? (
                           <PluginsSection

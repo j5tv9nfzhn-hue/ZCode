@@ -159,6 +159,11 @@ interface SessionStartupPreferences {
    * inherit 分支）。
    */
   neutralTaskTargetAllowlist?: readonly string[];
+  /**
+   * 渗透编排：开启时注入 PentestOrchestrationPort 并加入三个编排 subagent 角色。
+   * 缺席/false 即关闭；workflow_child 不继承（子代理没有自己的编排会话）。
+   */
+  pentestOrchestrationEnabled: boolean;
   /** Assistant CoT Prefill：请求末尾预置 assistant 思考前缀；缺席/false 即关闭。 */
   assistantCoTPrefillEnabled: boolean;
   /** 完整输出：不下发 maxOutputTokens；缺席/false 即关闭。 */
@@ -3250,6 +3255,7 @@ async function requestSessionRuntimePreferences(
         unfilteredFullOutputEnabled: false,
         neutralTaskProjectionDiffCapture: false,
         neutralTaskProjectionDiffCaptureAssistant: false,
+        pentestOrchestrationEnabled: false,
       };
     }
     throw error;
@@ -3275,6 +3281,8 @@ async function resolveSessionStartupPreferences(
       unfilteredFullOutputEnabled: false,
       neutralTaskProjectionDiffCapture: false,
       neutralTaskProjectionDiffCaptureAssistant: false,
+      // workflow_child 不继承编排：编排是主会话（task 根）的能力，子代理没有自己的编排会话。
+      pentestOrchestrationEnabled: false,
       resolveInitialBashShellSelection: async () => inheritedShellSelection,
     };
   }
@@ -3300,6 +3308,7 @@ async function resolveSessionStartupPreferences(
     ...(runtimePreferences.neutralTaskTargetAllowlist?.length
       ? { neutralTaskTargetAllowlist: runtimePreferences.neutralTaskTargetAllowlist }
       : {}),
+    pentestOrchestrationEnabled: runtimePreferences.pentestOrchestrationEnabled === true,
     assistantCoTPrefillEnabled: runtimePreferences.assistantCoTPrefillEnabled === true,
     unfilteredFullOutputEnabled: runtimePreferences.unfilteredFullOutputEnabled === true,
     neutralTaskProjectionDiffCapture: runtimePreferences.neutralTaskProjectionDiffCapture === true,
@@ -3409,6 +3418,8 @@ async function createRecord(
         : {}),
       // Assistant CoT Prefill 同理：按 session 固定，仅影响请求组装，不进入历史。
       assistantCoTPrefillEnabled: startupPreferences.assistantCoTPrefillEnabled,
+      // 渗透编排：按 session 固定。开启时注入编排端口 + 三个编排 subagent 角色。
+      pentestOrchestrationEnabled: startupPreferences.pentestOrchestrationEnabled,
       // 完整输出：按 session 固定，只影响单次请求参数。
       unfilteredFullOutputEnabled: startupPreferences.unfilteredFullOutputEnabled,
       // 投影 diff 捕获：debug-only，按 session 固定；含用户原始输入，不进 transcript。

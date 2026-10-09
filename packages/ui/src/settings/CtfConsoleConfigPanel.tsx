@@ -8,6 +8,7 @@ import {
   TID_SETTINGS_PROJECTION_DIFF_CAPTURE_ASSISTANT_SWITCH,
   TID_SETTINGS_PROJECTION_DIFF_CAPTURE_SWITCH,
   TID_SETTINGS_UNFILTERED_OUTPUT_SWITCH,
+  TID_SETTINGS_PENTEST_ORCHESTRATION_SWITCH,
 } from "@zcode/shared";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
@@ -27,6 +28,8 @@ export function CtfConsoleConfigPanel({
   onProjectionDiffCaptureChange,
   onProjectionDiffCaptureAssistantChange,
   onTargetAllowlistSave,
+  pentestOrchestrationEnabled,
+  onPentestOrchestrationChange,
 }: {
   neutralTaskProjectionEnabled: boolean;
   assistantCoTPrefillEnabled: boolean;
@@ -42,6 +45,9 @@ export function CtfConsoleConfigPanel({
   onProjectionDiffCaptureAssistantChange: (enabled: boolean) => Promise<void>;
   /** 保存登记表：入参是 textarea 的逐行原始输入，清洗由本组件与设置层共同兜底。 */
   onTargetAllowlistSave: (entries: readonly string[]) => Promise<void>;
+  /** 渗透编排总开关（默认关闭）。 */
+  pentestOrchestrationEnabled: boolean;
+  onPentestOrchestrationChange: (enabled: boolean) => Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
   const [allowlistDraft, setAllowlistDraft] = useState(targetAllowlist.join("\n"));
@@ -148,6 +154,24 @@ export function CtfConsoleConfigPanel({
             disabled={!projectionDiffCaptureEnabled}
             onCheckedChange={(checked) => {
               void onProjectionDiffCaptureAssistantChange(checked);
+            }}
+          />
+        }
+      />
+      <SettingsRow
+        label={intl.formatMessage({ id: "settings.ctfConsole.pentestOrchestration.label" })}
+        description={intl.formatMessage({
+          id: "settings.ctfConsole.pentestOrchestration.description",
+        })}
+        control={
+          <Switch
+            aria-label={intl.formatMessage({
+              id: "settings.ctfConsole.pentestOrchestration.label",
+            })}
+            checked={pentestOrchestrationEnabled}
+            data-testid={TID_SETTINGS_PENTEST_ORCHESTRATION_SWITCH}
+            onCheckedChange={(checked) => {
+              void onPentestOrchestrationChange(checked);
             }}
           />
         }

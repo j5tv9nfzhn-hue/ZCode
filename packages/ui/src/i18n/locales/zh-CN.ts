@@ -2053,6 +2053,9 @@ const zhCN: Record<string, string> = {
     "203.0.113.10\nlab.example.com\nhttps://api.example.com",
   "settings.ctfConsole.allowlist.save": "保存登记表",
   "settings.ctfConsole.allowlist.dropped": "以下写法不是确切的主机名 / IP，已忽略：{entries}",
+  "settings.ctfConsole.pentestOrchestration.label": "渗透编排",
+  "settings.ctfConsole.pentestOrchestration.description":
+    "开启后注册结构化编排工具（record_fact / report_finding / add_intent / insert_assets / …）与三个编排子代理（goals / planner / worker）。默认关闭，仅新建会话生效。",
   "settings.ctfConsole.log.title": "实时日志",
   "settings.ctfConsole.log.live": "会话事件已连接",
   "settings.ctfConsole.log.offline": "离线（仅控制台本地事件）",
