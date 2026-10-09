@@ -51,7 +51,13 @@ export type LocalMicrocompactBoundaryPayload = Omit<
 >;
 
 export interface LocalMicrocompactDecision {
-  estimatedTokenCount: number;
+  /**
+   * 关闭分支下**刻意缺省**：为了出这个数字要先 clone 全部消息再全量估 token，
+   * 而关闭时这个数字只进 debug 日志、没有任何行为消费者（见
+   * runtime/methods/microcompact.ts 的 logger?.debug 调用）。
+   * 宁可让日志少一个字段，也不要每个 model step 白付一次全量遍历。
+   */
+  estimatedTokenCount?: number;
   reason:
     | "disabled"
     | "not_triggered"
@@ -87,16 +93,36 @@ export function maybeLocalMicrocompactMessages<T extends LocalMicrocompactMessag
   nowMs?: number;
 }): LocalMicrocompactResult<T> {
   const config = input.config ?? {};
-  const messages = input.messages.map(cloneLocalMicrocompactMessage);
-  const estimatedTokenCount = estimateMessageTokens(messages);
   const thresholdTokens = positiveInt(config.thresholdTokens);
 
+  // 2026-10-09 性能修复：关闭分支必须**先于**任何昂贵工作返回。
+  //
+  // 原实现在此处之前就已经付了两次全量代价：调用方
+  // (runtime/helpers/compact.ts 的 maybeLocalMicrocompactRuntimeEntries) 先做了一次
+  // buildProviderRequestMessages（整段历史逐块深拷贝），紧接着下面这行又
+  // `messages.map(cloneLocalMicrocompactMessage)` 再深拷贝一遍，然后才估 token，
+  // 最后才发现 config.enabled === false 而原样返回。
+  //
+  // 而 microcompact 默认是关闭的（runtime/methods/microcompact.ts 的
+  // resolveLocalMicrocompactConfig 写死 `enabled: config.microcompact?.enabled === true`），
+  // 也就是说默认配置下每个 model step 都要白付两次全量深拷贝 + 一次全量 token 估算，
+  // 换来的 decision.reason 恒为 "disabled"、payload 恒为 undefined。
+  //
+  // 关闭时 messages 原样返回即可：payload 为空，调用方不会改写历史
+  // （见 runtime/methods/microcompact.ts 的 `if (!result.payload)` 早退）。
+  //
+  // 判据刻意仍是 `=== false` 而不是 `!== true`：enabled 缺席时的旧语义是
+  // 「按启用处理并走 trigger 判定」，改成 `!== true` 会把那条路径也一起关掉。
+  // 运行时默认值由 resolveLocalMicrocompactConfig 显式写成布尔，故默认路径仍被覆盖。
   if (config.enabled === false) {
     return {
-      decision: { estimatedTokenCount, reason: "disabled", thresholdTokens },
-      messages,
+      decision: { reason: "disabled", thresholdTokens },
+      messages: input.messages.slice(),
     };
   }
+
+  const messages = input.messages.map(cloneLocalMicrocompactMessage);
+  const estimatedTokenCount = estimateMessageTokens(messages);
 
   const trigger = resolveMicrocompactTrigger({
     config,

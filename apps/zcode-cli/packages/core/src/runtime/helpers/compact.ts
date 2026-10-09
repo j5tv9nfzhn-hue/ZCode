@@ -94,6 +94,23 @@ export function maybeLocalMicrocompactRuntimeEntries(input: {
   nowMs?: number;
   useMidConversationSystem?: boolean;
 }): RuntimeMicrocompactResult {
+  // 2026-10-09 性能修复：关闭时连 provider 投影都不做。
+  //
+  // 这里原本是「先 buildProviderRequestMessages（整段历史逐块深拷贝），再交给
+  // maybeLocalMicrocompactMessages 去判断 enabled」。而 microcompact 默认关闭
+  // （methods/microcompact.ts 的 resolveLocalMicrocompactConfig 写死
+  // `enabled === true` 才启用），于是默认配置下每个 model step 白做一次
+  // 全量投影 + 深拷贝，然后立刻拿到 reason "disabled"。
+  //
+  // 判据与被调用方保持一致（`=== false` 而非 `!== true`），避免两处对
+  // enabled 缺席的解读分叉。
+  if (input.config?.enabled === false) {
+    return {
+      decision: { reason: "disabled" as const },
+      entries: input.entries,
+    };
+  }
+
   const providerMessages = buildProviderRequestMessages({
     entries: input.entries,
     applyCacheControl: false,
