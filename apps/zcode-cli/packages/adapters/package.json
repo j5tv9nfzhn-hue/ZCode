@@ -97,7 +97,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src",
     "lint:fix": "oxlint --write src",
-    "test": "tsx --tsconfig ../../../../tsconfig.base.json --test test/pentest-orchestration.test.ts test/pentest-orchestration-port.test.ts test/usagePruneAmortization.test.ts test/sessionRevertContract.test.ts"
+    "test": "tsx --tsconfig ../../../../tsconfig.base.json --test test/pentest-orchestration.test.ts test/pentest-orchestration-port.test.ts test/usagePruneAmortization.test.ts test/sessionRevertContract.test.ts test/nativeWebSearchProviderCoverage.test.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.81",

@@ -3,6 +3,7 @@
 // ============================================================
 
 import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
 import { jsonSchema, tool, type ToolSet } from "ai";
 import { ModelErrorCode, type JsonSchema, type ModelToolContract } from "@zcode/contracts";
 import { AiSdkModelAdapterError } from "./errors.js";
@@ -16,6 +17,13 @@ export interface AiSdkToolTransformOptions {
   /** 本次请求的模型 id，仅用于首方 strict 资格判定；缺席即不启用 strict。 */
   modelId?: string;
 }
+
+/**
+ * provider 原生 web_search 的默认单次请求搜索次数上限。
+ * 与 core 侧 WebSearch 契约的 DEFAULT_MAX_USES 是同一条产品规则的两处默认值：
+ * core 负责把它写进契约 args，这里只在 core 没写时兜底。
+ */
+const DEFAULT_WEB_SEARCH_MAX_USES = 8;
 
 export function toAiSdkTools(
   tools?: ModelToolContract[],
@@ -250,8 +258,11 @@ function toAiSdkProviderNativeTool(
     return undefined;
   }
 
+  // 注意：这里的 args 只有 anthropic 分支会消费。openai.tools.webSearch 的入参类型是
+  // {}（见 @ai-sdk/openai/dist/index.mjs 的 `var webSearch = (args = {}) => ...`），
+  // 不支持 maxUses / allowedDomains / blockedDomains。下面的 openai 分支必须显式忽略，
+  // 不能让上层误以为域名过滤在该分支也生效——见 docs/native-web-search.md 不变量 3。
   const args = contract.providerNative.args ?? {};
-  const maxUses = numberArg(args.maxUses) ?? 8;
   const allowedDomains = stringArrayArg(args.allowedDomains);
   const blockedDomains = stringArrayArg(args.blockedDomains);
 
@@ -264,10 +275,31 @@ function toAiSdkProviderNativeTool(
         );
       }
       return anthropic.tools.webSearch_20260209({
-        maxUses,
+        maxUses: numberArg(args.maxUses) ?? DEFAULT_WEB_SEARCH_MAX_USES,
         allowedDomains,
         blockedDomains,
       }) as ToolSet[string];
+
+    case "openai":
+      if (!options.supportsNativeWebSearch) {
+        throw new AiSdkModelAdapterError(
+          ModelErrorCode.InvalidModelRequest,
+          "Effective Model Config does not support provider-native WebSearch",
+        );
+      }
+      // OpenAI 的原生 web search 不接收域名过滤与次数上限；args 在此被有意丢弃。
+      return openai.tools.webSearch() as ToolSet[string];
+
+    case "openai-compatible":
+      // 刻意不伪造工具：@ai-sdk/openai-compatible 只导出 createOpenAICompatible 与 model
+      // 类，没有 tools 命名空间；且多数 OpenAI 兼容端点不接受服务端 web_search 工具，
+      // 塞一个假工具只会把本来能跑的对话也打成 400。宁可给一句能指导行动的错误。
+      throw new AiSdkModelAdapterError(
+        ModelErrorCode.InvalidModelRequest,
+        "providerKind \"openai-compatible\" 没有原生联网搜索实现：" +
+          "@ai-sdk/openai-compatible 不提供 provider tools，且多数兼容端点不接受服务端 web_search。" +
+          "请改用 WebFetch 抓取已知 URL，或切换到 anthropic / openai 端点。",
+      );
 
     default:
       throw new AiSdkModelAdapterError(
