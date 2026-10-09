@@ -19,7 +19,11 @@ const DEFAULT_GLOBS = [
   "packages/*/test/**/*.{ts,tsx,mts,cts}",
   "apps/*/src/**/*.{ts,tsx,mts,cts}",
   "apps/*/test/**/*.{ts,tsx,mts,cts}",
-  "harness/**/*.{ts,tsx,mts,cts}",
+  // 2026-10-09：原先这里有 "harness/**/*.{ts,tsx,mts,cts}"。harness/ 是上游
+  // open source 提交（872ad96）带来的 ssh-server Dockerfile + build.sh，本分支从未
+  // 引用过、目录内也没有任何 TS 文件——这条 glob 恒匹配 0 个文件，是一条静默失效的
+  // 扫描范围。harness/ 已随该提交一并删除，此处同步移除，否则依赖工具会一直
+  // 假装自己在扫描一个不存在的目录。
   ...EXCLUDE_GLOBS,
 ];
 
