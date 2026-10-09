@@ -139,12 +139,30 @@ export function runTasksDatabaseMigrations(
 
 function adoptSchema(db: DatabaseSync): void {
   db.exec(TASK_INDEX_SCHEMA + AUTOMATION_SCHEMA + OFF_PEAK_SCHEMA);
+  // PRAGMA table_info 的结果只随 table 变化，与 column 无关。
+  // 原实现对每个字段各查一次（18 个字段 = 18 次 prepare + 查询，实际只有 4 张表）。
+  // 这里按表分组：每张表 prepare/查询一次，ALTER 仍按 columns 数组的原顺序执行
+  // （不同表的 ALTER 互不依赖，同表内顺序保持不变，语义与原实现等价）。
+  const columnsByTable = new Map<string, Array<[string, string]>>();
   for (const [table, column, definition] of columns) {
-    const existing = db.prepare(`PRAGMA table_info(${table})`).all();
-    if (existing.some((entry) => entry.name === column)) continue;
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-    if (table === "automations" && column === "scheduled_run_count") {
-      db.exec("UPDATE automations SET scheduled_run_count=run_count");
+    const group = columnsByTable.get(table);
+    if (group) {
+      group.push([column, definition]);
+    } else {
+      columnsByTable.set(table, [[column, definition]]);
+    }
+  }
+  for (const [table, tableColumns] of columnsByTable) {
+    const info = db.prepare(`PRAGMA table_info(${table})`);
+    // ALTER 之后必须把刚加的列并回「已存在」，否则同表下一个字段会被重复 ALTER 而报错。
+    const existing = new Set(info.all().map((entry) => entry.name));
+    for (const [column, definition] of tableColumns) {
+      if (existing.has(column)) continue;
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      existing.add(column);
+      if (table === "automations" && column === "scheduled_run_count") {
+        db.exec("UPDATE automations SET scheduled_run_count=run_count");
+      }
     }
   }
   db.exec(indexes);

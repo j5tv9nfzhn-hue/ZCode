@@ -232,5 +232,8 @@ function renderGeneratedModule(registry, contentHash, stats) {
     `export type BashCommandRegistryNode = readonly [readonly string[], readonly BashCommandRegistryOption[], number, readonly BashCommandRegistryNode[]];\n` +
     `export const BASH_COMMAND_REGISTRY_VERSION = "fig-${FIG_VERSION}";\n` +
     `export const BASH_COMMAND_REGISTRY_HASH = "${contentHash}";\n` +
-    `export const BASH_COMMAND_REGISTRY: Readonly<Record<string, BashCommandRegistryNode>> = ${JSON.stringify(registry)};\n`;
+    `let cachedBashCommandRegistry: Readonly<Record<string, BashCommandRegistryNode>> | undefined;\n` +
+    `export function getBashCommandRegistry(): Readonly<Record<string, BashCommandRegistryNode>> {\n` +
+    `  return (cachedBashCommandRegistry ??= ${JSON.stringify(registry)});\n` +
+    `}\n`;
 }

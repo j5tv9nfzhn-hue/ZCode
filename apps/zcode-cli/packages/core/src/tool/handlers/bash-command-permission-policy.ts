@@ -8,7 +8,7 @@ import {
 } from "./bash-command-parser.js";
 import { evaluateBashRules } from "./bash-command-rule-evaluator.js";
 import {
-  BASH_COMMAND_REGISTRY,
+  getBashCommandRegistry,
   type BashCommandRegistryNode,
 } from "./generated/bash-command-registry.js";
 import { isRuntimeReadOnlyBashCommand } from "./bash-semantics.js";
@@ -200,7 +200,11 @@ function resolveStableCommandPrefix(invocation: BashCommandInvocation): string |
     return serializePrefix(prefix);
   }
 
-  let node = BASH_COMMAND_REGISTRY[executableName];
+  // 注册表约 1.9MB，是纯数据字面量。生成器把它放进函数体并 memoize，
+  // V8 就只做预解析，直到第一次真正查表才materialize 这个对象图。
+  // 桌面每次冷启动都要为每个预热工作区解析整份 agent bundle，这 1.9MB
+  // 在只跑编排/对话、从不执行 bash 的会话里是纯浪费。
+  let node = getBashCommandRegistry()[executableName];
   if (!node) return undefined;
   const override = resolveDepthOverride(executableName, skipLeadingKnownOptions(node, remaining));
   if (override) {

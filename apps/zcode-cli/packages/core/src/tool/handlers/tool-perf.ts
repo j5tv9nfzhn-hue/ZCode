@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { CommandExecutionTelemetry, ToolExecutionTelemetry } from "@zcode/contracts";
 import type { ToolExecutionContext } from "../types.js";
 import { analyzeBashCommand } from "./bash-command-parser.js";
-import { BASH_COMMAND_REGISTRY } from "./generated/bash-command-registry.js";
+import { getBashCommandRegistry } from "./generated/bash-command-registry.js";
 
 const COMMAND_HASH_LENGTH = 16;
 const COMMAND_HASH_EDGE_CHARS = 4096;
@@ -75,7 +75,7 @@ export function classifySafeCommandIdentity(
     count: commandCount,
     // 隐私边界：只允许公开命令表中的静态可执行文件名进入远端 Trace；
     // 自定义脚本名和无法判定的动态表达式统一降级，绝不上传原始 token。
-    name: Object.hasOwn(BASH_COMMAND_REGISTRY, executable) ? executable : "other",
+    name: Object.hasOwn(getBashCommandRegistry(), executable) ? executable : "other",
   };
 }
 
