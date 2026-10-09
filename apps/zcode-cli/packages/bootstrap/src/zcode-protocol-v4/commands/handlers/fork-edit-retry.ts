@@ -354,7 +354,11 @@ async function startCanonicalIntent(
       requestedDelivery: editTarget.intent.requestedDelivery,
       admittedDelivery: editTarget.intent.admittedDelivery,
       fallbackReasonCode: editTarget.intent.fallbackReasonCode,
-      modelSelection: editTarget.intent.modelSelection,
+      // 历史 intent 的 modelSelection 记录的是「那一轮当初用了什么」，是审计事实，
+      // 不是「现在该用什么」。把它原样带上来，`applySubmissionExecutionState` 会
+      // 不但用旧模型发这一轮，还把它 durable 写回 session 的 runtime/model_selection
+      // （turn-model.ts:58-59）——一次误提就把会话选择永久改写，此后每轮都发往
+      // 旧模型，只能新开会话恢复。这里故意不传，让提交回退到会话当前选择。
       mode: editTarget.intent.mode,
       planEnabled: editTarget.intent.planEnabled,
       attachmentRefs,

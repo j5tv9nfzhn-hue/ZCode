@@ -116,7 +116,10 @@ export function inputIntentMetadataFromQueueItem(
     clientId: item.clientId,
     kind: item.kind,
     text: canonicalText,
-    ...(item.modelSelection ? { modelSelection: item.modelSelection } : {}),
+    // 队列项入队时绑定的模型不带到排出时：与 fork-edit-retry 的 rewind 路径同一失效
+    // 模式——「用 A 排队 → 换成 B → 队列排出」若照原样发，请求会发往 A，并且
+    // applySubmissionExecutionState 会把 A durable 写回会话选择，污染后续每一轮。
+    // 入队时的选择记录在队列项自身（UI 可读），执行一律以会话当前选择为准。
     ...(item.mode ? { mode: item.mode } : {}),
     ...(item.planEnabled !== undefined ? { planEnabled: item.planEnabled } : {}),
     admissionSeq: item.order.admissionSeq,
