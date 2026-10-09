@@ -158,7 +158,7 @@ pnpm --filter @zcode/cli... build
 node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
 ```
 
-运行时只接受四个入口：`app-server` / `agent-server`（协议服务端，桌面 Host 与远程 stdio 资产使用）、`plugin-host`、`dwf-child`、`__internal-search`。
+运行时只接受五个入口：`app-server` / `agent-server`（协议服务端，桌面 Host 与远程 stdio 资产使用）、`plugin-host`、`dwf-child`、`__internal-search`、`hooks trust`。
 
 测试入口以各包 `package.json` 为准。行为变更的常用入口：
 
@@ -220,9 +220,10 @@ sudo xattr -rd com.apple.quarantine /Applications/ZCode.app
 | `packages/services`                                  | 业务服务与持久化                                      |
 | `packages/shared`、`packages/rpc`、`packages/client` | 共享协议和类型、RPC 框架、Agent 客户端 SDK            |
 | `packages/provider`、`packages/provider-node`        | Provider 公共能力与 Node 实现                         |
+| `packages/model-option-map`                          | 模型能力选项映射                                     |
 | `apps/zcode-cli`                                     | Agent 运行时（协议服务端、plugin-host、工作流、工具） |
-| `docs`                                               | 分区文档（如 [CTF Console](docs/ctf-console.md)）     |
-| `scripts`、`config`、`third-party`                   | 构建维护脚本、内置配置与第三方声明材料                |
+| `docs`                                               | 分区文档（[CTF Console](docs/ctf-console.md) 为权威手册） |
+| `scripts`、`config`                                  | 构建维护脚本与内置配置                               |
 
 ## 项目文档
 

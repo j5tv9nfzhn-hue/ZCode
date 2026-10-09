@@ -41,7 +41,7 @@
 ## 结构与真实入口
 
 - `packages/desktop`：Electron Main / Host / Renderer 与桌面打包。`packages/server`：远程工作区后端（SSH/WSL/Docker）与远程 stdio 服务端。`packages/ui`：共享 React 组件、hooks、Zustand。`packages/services`：业务服务与持久化（内含 session、storage 子模块）。`packages/rpc|shared|client|provider|provider-node`：协议与类型、RPC 框架、Agent 客户端 SDK、Provider 能力。
-- `apps/zcode-cli`：桌面端启动的 Agent 运行时，**没有面向人的交互式 CLI / TUI**。运行时只接受 `app-server` / `agent-server`（协议服务端）、`plugin-host`、`dwf-child`、`__internal-search` 这几类入口，不要给它加新顶层命令形态。
+- `apps/zcode-cli`：桌面端启动的 Agent 运行时，**没有面向人的交互式 CLI / TUI**。运行时只接受 `app-server` / `agent-server`（协议服务端）、`plugin-host`、`dwf-child`、`__internal-search`、`hooks trust` 这几类入口，不要给它加新顶层命令形态。
 
 ## 提交与发布
 

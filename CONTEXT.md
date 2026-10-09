@@ -106,6 +106,36 @@ _Avoid_: 系统提示词伪装、思维链注入
 字段**——Provider 侧为必填校验，缺席会导致整个 turn 被判非法请求而失败。
 _Avoid_: 无限输出、关闭截断
 
+**Pentest Orchestration（渗透编排）**:
+开启后注册 10 个结构化产物工具（`add_goals` / `record_fact` / `report_finding` /
+`add_intent` / `insert_assets` / …）与三个角色子代理，并由编排循环驱动「拆解 → 规划
+→ 派发 → 回流」。默认关闭。
+_Avoid_: 自动渗透、一键打穿
+
+### 编排
+
+**Scope Allowlist（授权作用域登记表）**:
+用户逐条登记的确切 IP / 完整主机名清单。**登记即断言有权测试**——归属不必是自有资产，
+责任在使用者，仓库不核验。命中时请求注入一句作用域事实，未命中不声明任何授权。
+清洗在保存时进行（丢弃通配、网段、凭据样式串）。
+_Avoid_: 白名单、目标池、许可列表
+
+**Orchestration Graph（编排探索图）**:
+`po_*` 四张表构成的状态图，节点种类为 goal / intent / fact / finding / hint。取代早期
+的散文 ledger（`.zcode/pentest/ledger.md`，已删除）。**聚合状态不入模型上下文**——
+worker 只看到一条意图与少量背景。
+_Avoid_: 任务清单、进度文件、ledger
+
+**Intent（意图）**:
+探索的开放方向，由 planner 唯一生成、worker 消费。只能锚在已存在的 fact/finding 上
+（不变量 1），因此不得凭空发明方向。worker 拿到一条 intent 后只做这一条，不生成新方向。
+_Avoid_: 子任务、待办、步骤
+
+**Coverage Ratio（覆盖度）**:
+`tested / denominator`——已被至少一个 fact 锚定的资产数，除以命中作用域的资产数。
+是编排的**验收下限**，不是探索目标本身。
+_Avoid_: 完成率、进度百分比
+
 ### 语义
 
 **Canonical History（权威历史）**:
