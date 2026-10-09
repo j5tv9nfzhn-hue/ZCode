@@ -12,6 +12,13 @@ import type {
 const CHANNEL_EVENT_RESPONSE_TYPE = 204;
 const SOCKET_PROTOCOL_HEADER_BYTES = 13;
 
+/**
+ * `TextEncoder.encode` 自身无状态（每次返回新的 Uint8Array），所以复用同一个实例与
+ * 每次 `new` 完全等价。此前每次计量/编码都新建一个编码器，在每帧预算与每事件字节
+ * 记账这类高频路径上是纯粹的分配开销。
+ */
+const UTF8_ENCODER = new TextEncoder();
+
 function vqlByteLength(value: number): number {
   let bytes = 1;
   for (let remaining = value >>> 7; remaining > 0; remaining >>>= 7) bytes += 1;
@@ -77,11 +84,11 @@ export function measureTopicNotificationEnvelopeBytes(wire: TopicWireFrameCandid
 }
 
 export function utf8JsonByteLength(value: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  return UTF8_ENCODER.encode(JSON.stringify(value)).byteLength;
 }
 
 function encodeJson(value: unknown): Uint8Array {
-  return new TextEncoder().encode(JSON.stringify(value));
+  return UTF8_ENCODER.encode(JSON.stringify(value));
 }
 
 export class TopicWireFrameEncodingError extends Error {
