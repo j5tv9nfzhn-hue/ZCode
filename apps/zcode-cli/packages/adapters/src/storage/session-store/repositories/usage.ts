@@ -17,6 +17,25 @@ import { encodeJson } from "../json.js";
 const USAGE_RETENTION_DAYS = 30;
 const USAGE_RETENTION_MS = USAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
+/**
+ * 两次自动保留期清理之间的最小间隔。
+ *
+ * 为什么需要它：原先 `recordModelUsage` / `upsertTurnUsage` / `upsertToolUsage`
+ * **每一次写完都跑一遍 `pruneUsage`**，而 `pruneUsage` 是 `begin immediate` +
+ * 3 条 delete + commit 的写事务。`upsertToolUsage` 的驱动源是
+ * `ToolCallProgress` 事件（Bash 的输出轮询约 1s 一次），于是每个运行中的命令
+ * 每秒都开一次写事务，只为删几行早于 30 天的数据——`node:sqlite` 是**同步**的，
+ * 这些事务直接阻塞事件循环，且随并发命令数线性叠加。
+ *
+ * 为什么 1 小时是安全的：保留期是 30 天。按 1 小时摊销，超期数据最迟晚 1 小时
+ * 被清掉，对「30 天内不无限增长」这个保证没有任何削弱。
+ *
+ * 用 WeakMap 按 DatabaseSync 实例分别计时：多实例（本地 + 远程 workspace）各自
+ * 独立节流，且不阻止 db 被 GC。
+ */
+const USAGE_PRUNE_MIN_INTERVAL_MS = 60 * 60 * 1000;
+const lastUsagePruneAtByDb = new WeakMap<DatabaseSync, number>();
+
 export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord): Promise<void> {
   const computedTotalTokens =
     input.computedTotalTokens ??
@@ -160,7 +179,7 @@ export async function recordModelUsage(db: DatabaseSync, input: ModelUsageRecord
     encodeJson(input.rawUsage),
     encodeJson(input.providerMetadata),
   );
-  await pruneUsage(db);
+  await maybePruneUsage(db);
 }
 
 export async function upsertTurnUsage(db: DatabaseSync, input: TurnUsageRecord): Promise<void> {
@@ -253,7 +272,7 @@ export async function upsertTurnUsage(db: DatabaseSync, input: TurnUsageRecord):
     input.errorType ?? null,
     input.errorCode ?? null,
   );
-  await pruneUsage(db);
+  await maybePruneUsage(db);
 }
 
 export async function upsertToolUsage(db: DatabaseSync, input: ToolUsageRecord): Promise<void> {
@@ -329,7 +348,24 @@ export async function upsertToolUsage(db: DatabaseSync, input: ToolUsageRecord):
         error_message = coalesce(excluded.error_message, tool_usage.error_message)
       `,
   ).run(...toolUsageValues(input));
-  await pruneUsage(db);
+  await maybePruneUsage(db);
+}
+
+/**
+ * 摊销版保留期清理：距上次成功清理不足 `USAGE_PRUNE_MIN_INTERVAL_MS` 就直接返回。
+ *
+ * 只有**成功**后才记时间戳——清理失败（锁竞争、磁盘满等）下一次写会重试，
+ * 不会因为一次失败就白白跳过 1 小时。
+ */
+async function maybePruneUsage(
+  db: DatabaseSync,
+  input: { beforeTime?: number } = {},
+): Promise<void> {
+  const lastPruneAt = lastUsagePruneAtByDb.get(db);
+  const now = Date.now();
+  if (lastPruneAt !== undefined && now - lastPruneAt < USAGE_PRUNE_MIN_INTERVAL_MS) return;
+  await pruneUsage(db, input);
+  lastUsagePruneAtByDb.set(db, now);
 }
 
 export async function pruneUsage(

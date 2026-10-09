@@ -11,6 +11,7 @@ import type {
 import { decodeMessageRow, decodePartRow, partCreatedAt } from "../codecs.js";
 import { encodeJson } from "../json.js";
 import type { MessageRow, PartRow } from "../rows.js";
+import { prepareStatement } from "./statement-cache.js";
 import { touchSession } from "./sessions.js";
 
 // 只补回旧版快照字段，不合并整个 JSON：递归 merge 会让已清空的 metadata/options 残留。
@@ -31,6 +32,81 @@ const MESSAGE_DATA_UPDATE = preserveLegacyMembers("message", [
   "variant",
 ]);
 const PART_DATA_UPDATE = preserveLegacyMembers("part", ["fromModel", "toModel", "model"]);
+
+// 热路径 SQL 提取为模块常量：文本稳定，才能命中 statement-cache 的按文本记忆化。
+const SAVE_MESSAGE_SQL = `
+      insert into message (id, session_id, time_created, time_updated, data, sequence)
+      values (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        (
+          select coalesce(max(sequence), -1) + 1
+          from message
+          where session_id = ?
+        )
+      )
+      on conflict(id) do update set
+        session_id = excluded.session_id,
+        time_updated = excluded.time_updated,
+        -- 旧字段是回滚快照，不能因新版 Reader 隐藏了它们而在普通更新时丢掉。
+        data = case when message.session_id = excluded.session_id then ${MESSAGE_DATA_UPDATE} else excluded.data end,
+        sequence = case
+          when message.session_id = excluded.session_id then message.sequence
+          else excluded.sequence
+        end
+      `;
+const SAVE_PART_SQL = `
+      insert into part (id, message_id, session_id, time_created, time_updated, data, sequence)
+      values (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        (
+          select coalesce(max(sequence), -1) + 1
+          from part
+          where message_id = ?
+        )
+      )
+      on conflict(id) do update set
+        message_id = excluded.message_id,
+        session_id = excluded.session_id,
+        time_updated = excluded.time_updated,
+        data = case when part.message_id = excluded.message_id and part.session_id = excluded.session_id
+          then ${PART_DATA_UPDATE} else excluded.data end,
+        sequence = case
+          when part.message_id = excluded.message_id and part.session_id = excluded.session_id
+            then part.sequence
+          else excluded.sequence
+        end
+      `;
+const DELETE_MESSAGE_SQL = "delete from message where id = ? and session_id = ?";
+const DELETE_PART_SQL = "delete from part where id = ? and message_id = ? and session_id = ?";
+const LIST_MESSAGES_SQL = `
+      select * from message
+      where session_id = ?
+      order by sequence is null, sequence, time_created, rowid
+      `;
+const LIST_PARTS_BY_SESSION_SQL = `
+      select * from part
+      where session_id = ?
+      order by message_id, sequence is null, sequence, time_created, id
+      `;
+const GET_MESSAGE_SQL = "select * from message where id = ? and session_id = ?";
+const LIST_PARTS_BY_MESSAGE_SQL = `
+      select * from part
+      where message_id = ? and session_id = ?
+      order by sequence is null, sequence, time_created, id
+      `;
+const COPY_LEGACY_MEMBERS_SQL = {
+  message: "SELECT data FROM message WHERE id=? AND session_id=?",
+  part: "SELECT data FROM part WHERE id=? AND session_id=?",
+} as const;
 
 // on-conflict 的 sequence 规则：
 // 同 scope 再保存必须原样保留现有 sequence——包括 NULL。coalesce(existing, excluded)
@@ -64,32 +140,7 @@ export async function saveMessage(
   const timeUpdated =
     input.role === "assistant" ? (input.time.completed ?? Date.now()) : timeCreated;
 
-  db.prepare(
-    `
-      insert into message (id, session_id, time_created, time_updated, data, sequence)
-      values (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        (
-          select coalesce(max(sequence), -1) + 1
-          from message
-          where session_id = ?
-        )
-      )
-      on conflict(id) do update set
-        session_id = excluded.session_id,
-        time_updated = excluded.time_updated,
-        -- 旧字段是回滚快照，不能因新版 Reader 隐藏了它们而在普通更新时丢掉。
-        data = case when message.session_id = excluded.session_id then ${MESSAGE_DATA_UPDATE} else excluded.data end,
-        sequence = case
-          when message.session_id = excluded.session_id then message.sequence
-          else excluded.sequence
-        end
-      `,
-  ).run(
+  prepareStatement(db, SAVE_MESSAGE_SQL).run(
     id,
     sessionID,
     timeCreated,
@@ -104,10 +155,7 @@ export async function removeMessage(
   db: DatabaseSync,
   input: { sessionID: SessionId; messageID: MessageId },
 ): Promise<void> {
-  db.prepare("delete from message where id = ? and session_id = ?").run(
-    input.messageID,
-    input.sessionID,
-  );
+  prepareStatement(db, DELETE_MESSAGE_SQL).run(input.messageID, input.sessionID);
 }
 
 export async function savePart(
@@ -141,35 +189,7 @@ export async function savePart(
   }
   const now = Date.now();
 
-  db.prepare(
-    `
-      insert into part (id, message_id, session_id, time_created, time_updated, data, sequence)
-      values (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        ?,
-        (
-          select coalesce(max(sequence), -1) + 1
-          from part
-          where message_id = ?
-        )
-      )
-      on conflict(id) do update set
-        message_id = excluded.message_id,
-        session_id = excluded.session_id,
-        time_updated = excluded.time_updated,
-        data = case when part.message_id = excluded.message_id and part.session_id = excluded.session_id
-          then ${PART_DATA_UPDATE} else excluded.data end,
-        sequence = case
-          when part.message_id = excluded.message_id and part.session_id = excluded.session_id
-            then part.sequence
-          else excluded.sequence
-        end
-      `,
-  ).run(
+  prepareStatement(db, SAVE_PART_SQL).run(
     id,
     messageID,
     sessionID,
@@ -189,9 +209,7 @@ function copyLegacyMembers(
 ): Record<string, unknown> {
   if (!source) return data;
   // 复制只搬运存储快照；运行层不读取旧字段，也不能凭当前选择重建旧值。
-  const row = db
-    .prepare(`SELECT data FROM ${table} WHERE id=? AND session_id=?`)
-    .get(source.id, source.sessionID);
+  const row = prepareStatement(db, COPY_LEGACY_MEMBERS_SQL[table]).get(source.id, source.sessionID);
   if (!row) throw new Error(`Storage copy source missing: ${table}/${source.id}`);
   const original = JSON.parse(String(row.data)) as Record<string, unknown>;
   const result = { ...data };
@@ -211,36 +229,20 @@ export async function removePart(
     partID: PartId;
   },
 ): Promise<void> {
-  db.prepare("delete from part where id = ? and message_id = ? and session_id = ?").run(
-    input.partID,
-    input.messageID,
-    input.sessionID,
-  );
+  prepareStatement(db, DELETE_PART_SQL).run(input.partID, input.messageID, input.sessionID);
 }
 
 export async function messages(
   db: DatabaseSync,
   input: { sessionID: SessionId },
 ): Promise<MessageWithParts[]> {
-  const messageRows = db
-    .prepare(
-      `
-      select * from message
-      where session_id = ?
-      order by sequence is null, sequence, time_created, rowid
-      `,
-    )
-    .all(input.sessionID) as unknown as MessageRow[];
+  const messageRows = prepareStatement(db, LIST_MESSAGES_SQL).all(
+    input.sessionID,
+  ) as unknown as MessageRow[];
 
-  const partRows = db
-    .prepare(
-      `
-      select * from part
-      where session_id = ?
-      order by message_id, sequence is null, sequence, time_created, id
-      `,
-    )
-    .all(input.sessionID) as unknown as PartRow[];
+  const partRows = prepareStatement(db, LIST_PARTS_BY_SESSION_SQL).all(
+    input.sessionID,
+  ) as unknown as PartRow[];
   const partsByMessage = new Map<string, MessagePart[]>();
 
   for (const row of partRows) {
@@ -260,20 +262,16 @@ export async function messageWithParts(
   db: DatabaseSync,
   input: { sessionID: SessionId; messageID: MessageId },
 ): Promise<MessageWithParts | null> {
-  const messageRow = db
-    .prepare("select * from message where id = ? and session_id = ?")
-    .get(input.messageID, input.sessionID) as unknown as MessageRow | undefined;
+  const messageRow = prepareStatement(db, GET_MESSAGE_SQL).get(
+    input.messageID,
+    input.sessionID,
+  ) as unknown as MessageRow | undefined;
   if (!messageRow) return null;
 
-  const partRows = db
-    .prepare(
-      `
-      select * from part
-      where message_id = ? and session_id = ?
-      order by sequence is null, sequence, time_created, id
-      `,
-    )
-    .all(input.messageID, input.sessionID) as unknown as PartRow[];
+  const partRows = prepareStatement(db, LIST_PARTS_BY_MESSAGE_SQL).all(
+    input.messageID,
+    input.sessionID,
+  ) as unknown as PartRow[];
   return {
     info: decodeMessageRow(messageRow),
     parts: partRows.map(decodePartRow),

@@ -16,18 +16,10 @@ import {
 import { decodeSessionRow } from "../codecs.js";
 import { encodeJson } from "../json.js";
 import type { SessionRow } from "../rows.js";
+import { prepareStatement } from "./statement-cache.js";
 
-export function createSession(
-  db: DatabaseSync,
-  input: CreateSessionInput,
-): SessionInfo {
-  const now = Date.now();
-  const timeCreated = input.time?.created ?? now;
-  const timeUpdated = input.time?.updated ?? timeCreated;
-
-  db
-    .prepare(
-      `
+// 文本稳定的 SQL 提到模块常量：statement-cache 按文本记忆化，文本每次重建会 miss 缓存。
+const CREATE_SESSION_SQL = `
       insert into session (
         id, project_id, workspace_id, parent_id, trace_id, task_type, slug, directory, path,
         title, title_source, title_message_id, version,
@@ -52,28 +44,57 @@ export function createSession(
         permission = coalesce(excluded.permission, session.permission),
         time_title_updated = excluded.time_title_updated,
         time_updated = excluded.time_updated
-      `,
-    )
-    .run(
-      input.id,
-      input.projectID,
-      input.workspaceID ?? null,
-      input.parentID ?? null,
-      input.traceID ?? null,
-      input.taskType ?? "interactive",
-      input.slug,
-      input.directory,
-      input.path ?? null,
-      input.title,
-      input.titleSource ?? "first_input",
-      input.titleMessageID ?? null,
-      input.version,
-      input.shareURL ?? null,
-      encodeJson(input.permission),
-      timeCreated,
-      timeUpdated,
-      input.titleSource || input.titleMessageID ? timeUpdated : null,
-    );
+      `;
+const UPDATE_SESSION_SQL = `
+      update session set
+        directory = ?,
+        path = ?,
+        title = ?,
+        title_source = ?,
+        title_message_id = ?,
+        share_url = ?,
+        summary_additions = ?,
+        summary_deletions = ?,
+        summary_files = ?,
+        summary_diffs = ?,
+        revert = ?,
+        permission = ?,
+        time_title_updated = ?,
+        time_compacting = ?,
+        time_archived = ?,
+        -- 路径自愈可能携带并发读取前的旧时间，不能回退真实活动时间。
+        time_updated = max(time_updated, ?)
+      where id = ?
+      `;
+const GET_SESSION_SQL = "select * from session where id = ?";
+// saveMessage/savePart 每次都调用，文本恒定，走缓存。
+const TOUCH_SESSION_SQL = "update session set time_updated = max(time_updated, ?) where id = ?";
+
+export function createSession(db: DatabaseSync, input: CreateSessionInput): SessionInfo {
+  const now = Date.now();
+  const timeCreated = input.time?.created ?? now;
+  const timeUpdated = input.time?.updated ?? timeCreated;
+
+  prepareStatement(db, CREATE_SESSION_SQL).run(
+    input.id,
+    input.projectID,
+    input.workspaceID ?? null,
+    input.parentID ?? null,
+    input.traceID ?? null,
+    input.taskType ?? "interactive",
+    input.slug,
+    input.directory,
+    input.path ?? null,
+    input.title,
+    input.titleSource ?? "first_input",
+    input.titleMessageID ?? null,
+    input.version,
+    input.shareURL ?? null,
+    encodeJson(input.permission),
+    timeCreated,
+    timeUpdated,
+    input.titleSource || input.titleMessageID ? timeUpdated : null,
+  );
 
   return mustGetSession(db, input.id);
 }
@@ -108,64 +129,33 @@ export async function updateSession(
   const titleChanged = input.title !== undefined && input.title !== current.title;
   const nextTitleSource = input.titleSource ?? current.titleSource ?? "first_input";
 
-  db
-    .prepare(
-      `
-      update session set
-        directory = ?,
-        path = ?,
-        title = ?,
-        title_source = ?,
-        title_message_id = ?,
-        share_url = ?,
-        summary_additions = ?,
-        summary_deletions = ?,
-        summary_files = ?,
-        summary_diffs = ?,
-        revert = ?,
-        permission = ?,
-        time_title_updated = ?,
-        time_compacting = ?,
-        time_archived = ?,
-        -- 路径自愈可能携带并发读取前的旧时间，不能回退真实活动时间。
-        time_updated = max(time_updated, ?)
-      where id = ?
-      `,
-    )
-    .run(
-      input.directory ?? current.directory,
-      input.path === undefined ? (current.path ?? null) : input.path,
-      input.title ?? current.title,
-      nextTitleSource,
-      input.titleMessageID === undefined
-        ? (current.titleMessageID ?? null)
-        : input.titleMessageID,
-      input.shareURL === undefined ? (current.shareURL ?? null) : input.shareURL,
-      summary === null ? null : (summary.additions ?? null),
-      summary === null ? null : (summary.deletions ?? null),
-      summary === null ? null : (summary.files ?? null),
-      summary === null ? null : encodeJson(summary.diffs),
-      input.revert === undefined ? encodeJson(current.revert) : encodeJson(input.revert),
-      input.permission === undefined ? encodeJson(current.permission) : encodeJson(input.permission),
-      titleChanged || input.titleSource !== undefined || input.titleMessageID !== undefined
-        ? now
-        : (current.time.titleUpdated ?? null),
-      input.timeCompacting === undefined ? (current.time.compacting ?? null) : input.timeCompacting,
-      input.timeArchived === undefined ? (current.time.archived ?? null) : input.timeArchived,
-      input.timeUpdated ?? now,
-      input.id,
-    );
+  prepareStatement(db, UPDATE_SESSION_SQL).run(
+    input.directory ?? current.directory,
+    input.path === undefined ? (current.path ?? null) : input.path,
+    input.title ?? current.title,
+    nextTitleSource,
+    input.titleMessageID === undefined ? (current.titleMessageID ?? null) : input.titleMessageID,
+    input.shareURL === undefined ? (current.shareURL ?? null) : input.shareURL,
+    summary === null ? null : (summary.additions ?? null),
+    summary === null ? null : (summary.deletions ?? null),
+    summary === null ? null : (summary.files ?? null),
+    summary === null ? null : encodeJson(summary.diffs),
+    input.revert === undefined ? encodeJson(current.revert) : encodeJson(input.revert),
+    input.permission === undefined ? encodeJson(current.permission) : encodeJson(input.permission),
+    titleChanged || input.titleSource !== undefined || input.titleMessageID !== undefined
+      ? now
+      : (current.time.titleUpdated ?? null),
+    input.timeCompacting === undefined ? (current.time.compacting ?? null) : input.timeCompacting,
+    input.timeArchived === undefined ? (current.time.archived ?? null) : input.timeArchived,
+    input.timeUpdated ?? now,
+    input.id,
+  );
 
   return mustGetSession(db, input.id);
 }
 
-export function getSession(
-  db: DatabaseSync,
-  sessionID: SessionId,
-): SessionInfo | null {
-  const row = db.prepare("select * from session where id = ?").get(sessionID) as
-    | SessionRow
-    | undefined;
+export function getSession(db: DatabaseSync, sessionID: SessionId): SessionInfo | null {
+  const row = prepareStatement(db, GET_SESSION_SQL).get(sessionID) as SessionRow | undefined;
   return row ? decodeSessionRow(row) : null;
 }
 
@@ -224,6 +214,8 @@ export async function listSessions(
   if (limitValue !== undefined) {
     values.push(limitValue);
   }
+  // where/limit 由筛选条件拼装，文本随入参变化：走 statement-cache 会按变体堆积，
+  // 且不在 save 热路径上，保持每次 prepare。
   const rows = db
     .prepare(`select * from session ${where} order by time_updated desc, id desc${limit}`)
     .all(...values) as unknown as SessionRow[];
@@ -239,6 +231,7 @@ export function claimLegacySessionWorkspace(
   // 3.3.6 的 SSH/WSL session 没有 workspace_id，3.4 sessions-index 又按完整
   // identity 严格查询，升级后历史任务全部不可见。这里只认 host tasks-index 给出的精确
   // taskId allowlist，并叠加实际目录和 NULL identity，不能退化成按路径批量认领。
+  // id in (?, …) 的文本随 allowlist 长度变化，不进 statement-cache；这是一次性认领，不在热路径。
   const result = db
     .prepare(
       `update session
@@ -337,9 +330,7 @@ export async function clearRevert(db: DatabaseSync, sessionID: SessionId): Promi
 }
 
 export function touchSession(db: DatabaseSync, sessionID: SessionId, timeUpdated: number): void {
-  db
-    .prepare("update session set time_updated = max(time_updated, ?) where id = ?")
-    .run(timeUpdated, sessionID);
+  prepareStatement(db, TOUCH_SESSION_SQL).run(timeUpdated, sessionID);
 }
 
 function normalizeSessionTaskTypes(taskTypes: readonly SessionTaskType[] | undefined): string[] {
