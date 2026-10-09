@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, openSync, readSync, closeSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,8 +98,38 @@ function stageDevAgentBundle() {
   });
 }
 
+/**
+ * 复用已有 dist 产物前，必须确认它是 `--desktop-agent` 构建，而不是普通 `pnpm build` 的 debug 产物。
+ *
+ * 起因：早退分支原本只看文件是否存在，于是「先跑过普通 build → 再走 bootstrap:with-remote」
+ * 会把未压缩的 debug bundle 原样 stage 进 bundled-agents，成为出厂产物。那一份多出约 14MB，
+ * 且每次冷启动要多解析一倍多的 JS。
+ *
+ * 判据取自 build.mjs 的 `sourcemap: e2eCoverage || !desktopAgent`：desktop-agent 构建恒不产
+ * source map，普通 build 与 E2E 构建恒产。故「文件尾没有 sourceMappingURL 注释」等价于
+ * 「是 desktop-agent 构建」。只读文件尾，不整读 29MB。
+ */
+function isDesktopAgentBundle(bundlePath) {
+  const SOURCE_MAP_MARKER = "sourceMappingURL=";
+  let handle;
+  try {
+    const { size } = statSync(bundlePath);
+    const tailLength = Math.min(size, 4096);
+    const tail = Buffer.alloc(tailLength);
+    handle = openSync(bundlePath, "r");
+    readSync(handle, tail, 0, tailLength, size - tailLength);
+    return !tail.toString("latin1").includes(SOURCE_MAP_MARKER);
+  } catch {
+    // 读不出来就当「不能确认」，让调用方重建，而不是拿一份来路不明的产物去 stage。
+    return false;
+  } finally {
+    if (handle !== undefined) closeSync(handle);
+  }
+}
+
 async function runBootstrapWithRemoteBuild() {
-  if (existsSync(resolve(repoRoot, "apps/zcode-cli/packages/cli/dist/zcode.cjs"))) {
+  const existingBundle = resolve(repoRoot, "apps/zcode-cli/packages/cli/dist/zcode.cjs");
+  if (existsSync(existingBundle) && isDesktopAgentBundle(existingBundle)) {
     await stageBuiltinProviderConfig({
       root: repoRoot,
       env: pnpmRunEnv,
