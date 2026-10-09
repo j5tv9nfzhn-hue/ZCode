@@ -122,7 +122,7 @@ HTTP 客户端（`http_request` / `http_batch`），脚本不拦截模型的工�
 曾导致模型陷入 CORS 代理死循环）。本轮改走**真实后端**：
 `zcode.cjs app-server --stdio` → legacy ZCode Protocol → `registry.toContracts()`
 真实工具契约 → 真实 `Bash`/`Read`/`Grep` → `runModelTextRequest` 投影层 →
-魔搭 `glm-5.3-flash`。CTF 三开关经 `session/requestRuntimePreferences` 下发。
+魔搭 `glm-5.3-flash`。CTF 的 6 个开关经 `session/requestRuntimePreferences` 下发。
 
 **任务**：读一个自建的逆向/渗透工作区（tasklet-gateway），给下一步建议，
 允许继续做简单渗透与逆向，但不得修改任何既有 `.py`。用户指令原样传递。

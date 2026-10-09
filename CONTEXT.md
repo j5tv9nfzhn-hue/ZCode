@@ -91,9 +91,10 @@ _Avoid_: 安装损坏、manifest 缺失、已卸载插件
 ### 开关
 
 **Neutral Task Projection（中性任务投影）**:
-在请求投影层对叙事文本做中性化改写。真实 user 输入按句式重构（保留目标实体与原始
-意图片段，去除攻击语义触发词），其余文本只过词表层。改写只作用于发往 Provider 的
-请求副本；canonical 历史、落盘 transcript、UI 展示与工作区文件保留原文。
+在请求投影层对叙事文本做中性化。**真实 user 输入逐字保留**，只在其前追加身份/授权姿态
+段落；词表命中的攻击语义词只作遥测、不触发删改（删词会把攻击行为一起删掉）。改写只作用于
+system / assistant / synthetic-user 文本与发往 Provider 的请求副本；canonical 历史、落盘
+transcript、UI 展示与工作区文件保留原文。
 _Avoid_: 提示词改写、绕过审核、翻译层
 
 **Assistant CoT Prefill**:
@@ -150,9 +151,9 @@ History，区别于 transcript。
 _Avoid_: 中间件、过滤器
 
 **Restructure vs Lexicon（句式重构 / 词表层）**:
-两种强度的改写。真实 user 输入走句式重构（改变句子结构）；system、assistant 与
-合成 user 消息只过词表层（等义替换）。合成消息不得做句式重构——它们的正文是技术
-细节，重构会摧毁上下文。
+两种强度的改写。**真实 user 输入两者都不做**——逐字保留，只做前置追加；词表命中仅作遥测。
+system、assistant 与合成 user 消息只过词表层（等义替换）。合成消息不得做句式重构——它们的
+正文是技术细节，重构会摧毁上下文。
 _Avoid_: 强改写、深度改写
 
 **Synthetic User Message（合成 user 消息）**:

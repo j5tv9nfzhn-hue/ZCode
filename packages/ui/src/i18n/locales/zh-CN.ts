@@ -2007,13 +2007,13 @@ const zhCN: Record<string, string> = {
   "settings.systemPrompt.reset": "恢复默认",
   "settings.systemPrompt.neutralProjection.label": "中性任务投影",
   "settings.systemPrompt.neutralProjection.description":
-    "开启后，发送给模型的请求会先做中性化重写：指令重构为可执行的验证任务、工具名改为中性表述，历史与工具执行保持原样。适合长时间多阶段的任务执行。",
+    "开启后，发送给模型的请求会先做中性化：你的指令原文保留，只在其前追加身份与授权姿态，工具名改为中性表述，历史与工具执行保持原样。适合长时间多阶段的任务执行。",
   "settings.systemPrompt.cotPrefill.label": "助手思考预置",
   "settings.systemPrompt.cotPrefill.description":
     "开启后，发送请求前在消息列表末尾预置一条助手思考起始（reasoning 块 + 过渡语），让模型以「已开始执行」的姿态续写。对自有可控 provider 有效，默认关闭。",
   "settings.ctfConsole.title": "CTF Console",
   "settings.ctfConsole.description":
-    "面向授权演练的控制台：统一管理请求投影开关、公网目标测试与运行时实时日志。所有开关按新建会话生效，历史记录与工作区文件保持原样。",
+    "面向授权演练的控制台：统一管理请求投影开关、本地投影预览与运行时实时日志。所有开关按新建会话生效，历史记录与工作区文件保持原样。",
   "settings.ctfConsole.unfilteredOutput.label": "完整输出（不截断）",
   "settings.ctfConsole.unfilteredOutput.description":
     "开启后按模型自身声明的上限下发 maxOutputTokens，不受本地上下文预算截断。该字段必须下发（provider 侧为必填校验），省略会导致请求被拒。",
@@ -2033,7 +2033,7 @@ const zhCN: Record<string, string> = {
   "settings.ctfConsole.projectionDiff.truncated": "已截断（原文 {length} 字）",
   "settings.ctfConsole.projectionDiff.privacyWarning":
     "以下内容含用户原始输入，仅存在于内存、不写入聊天记录与落盘历史。截图与外传前请自行确认合规。",
-  "settings.ctfConsole.probe.title": "公网目标测试",
+  "settings.ctfConsole.probe.title": "投影预览（本地，不发出任何请求）",
   "settings.ctfConsole.probe.disclaimer":
     "输入前请务必慎思权重：目标选择、频率与深度将直接影响真实公网系统。确认由你自行判断并承担全部责任。",
   "settings.ctfConsole.probe.targetLabel": "目标地址（域名 / URL / IP）",

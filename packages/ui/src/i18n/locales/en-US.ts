@@ -2138,7 +2138,7 @@ const enUS: Record<string, string> = {
   "settings.systemPrompt.reset": "Restore default",
   "settings.systemPrompt.neutralProjection.label": "Neutral task projection",
   "settings.systemPrompt.neutralProjection.description":
-    "When enabled, requests sent to the model are neutralized first: instructions are restructured into executable verification tasks and tool names are projected to neutral forms, while history and tool execution stay verbatim. Useful for long multi-stage task execution.",
+    "When enabled, requests sent to the model are neutralized first: your instructions are kept verbatim and only prefixed with identity and authorization framing, while tool names are projected to neutral forms; history and tool execution stay verbatim. Useful for long multi-stage task execution.",
   "settings.systemPrompt.cotPrefill.label": "Assistant thought prefill",
   "settings.systemPrompt.cotPrefill.description":
     'When enabled, an assistant thinking prefix (reasoning block + lead-in) is injected at the end of the message list before each request, so the model continues from a "already started" stance. Effective with self-hosted providers; off by default.',
@@ -2165,7 +2165,7 @@ const enUS: Record<string, string> = {
   "settings.ctfConsole.projectionDiff.truncated": "truncated ({length} chars)",
   "settings.ctfConsole.projectionDiff.privacyWarning":
     "This content contains the user's raw input. It lives in memory only and is never written to chat history or disk. Confirm compliance before sharing or screenshotting.",
-  "settings.ctfConsole.probe.title": "Public target testing",
+  "settings.ctfConsole.probe.title": "Projection preview (local, sends nothing)",
   "settings.ctfConsole.probe.disclaimer":
     "Please weigh the stakes before entering: target choice, rate and depth directly affect real public systems. The decision and all responsibility remain yours.",
   "settings.ctfConsole.probe.targetLabel": "Target (domain / URL / IP)",

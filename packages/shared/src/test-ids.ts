@@ -389,7 +389,7 @@ export const TID_SETTINGS_PROJECTION_DIFF_CAPTURE_SWITCH =
 /** 投影 diff 捕获的 assistant 侧二次开关。 */
 export const TID_SETTINGS_PROJECTION_DIFF_CAPTURE_ASSISTANT_SWITCH =
   "settings-projection-diff-capture-assistant-switch";
-/** CTF Console 公网目标测试提交按钮 */
+/** CTF Console 投影预览提交按钮（本地预览，不发起请求） */
 export const TID_SETTINGS_CTF_PROBE_SUBMIT = "settings-ctf-probe-submit";
 /** 渗透编排总开关（CTF Console，默认关闭）。 */
 export const TID_SETTINGS_PENTEST_ORCHESTRATION_SWITCH = "settings-pentest-orchestration-switch";

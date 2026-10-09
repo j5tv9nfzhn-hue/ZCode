@@ -15,7 +15,7 @@
 
 **本分支新增的能力（本分支自有，与官方产品无关）：**
 
-- [CTF Console](docs/ctf-console.md) 授权演练控制台（设置页「CTF Console」分区）：请求投影三开关、投影 diff 调试面板、运行时日志、公网目标测试入口；
+- [CTF Console](docs/ctf-console.md) 授权演练控制台（设置页「CTF Console」分区）：6 个开关（请求投影、思维链预填、完整输出、投影 diff 捕获、assistant 侧捕获、渗透编排）、投影 diff 调试面板、运行时日志、覆盖度与编排图面板、投影预览；
 - 内置 `pentest` 编排技能：多阶段安全评估的阶段隔离编排；
 - 自定义系统提示词分区。
 
