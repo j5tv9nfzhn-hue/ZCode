@@ -20,6 +20,7 @@ import type {
   UserInputAutoResolutionUpdatedPayload,
 } from "../deps.js";
 import { titleFromInput, slugify, projectIdFromDirectory } from "../helpers/index.js";
+import { estimateSessionEventPayloadBytes } from "../helpers/session-event-payload-bytes.js";
 import type { AgentRuntimeInternal } from "../internal.js";
 import { buildPersistedConversationInputIntent } from "./input-intent-persistence.js";
 import { recordToolUsageFromEvent } from "./usage-observability.js";
@@ -57,7 +58,11 @@ interface SessionEventAppendAggregate {
   firstSessionEventSequenceNumber: number;
   lastEventId: string;
   lastSessionEventSequenceNumber: number;
-  payloadBytes: number;
+  /**
+   * 量级估算，不是精确 UTF-8 字节数。它只进 debug 汇总日志，不参与任何业务判断，
+   * 所以用 O(1)/字符串的结构遍历代替整份 JSON.stringify（见 helpers/session-event-payload-bytes.ts）。
+   */
+  estimatedPayloadBytes: number;
   payloadKinds: Record<string, number>;
 }
 
@@ -155,6 +160,9 @@ function recordSessionEventAppendAggregate(
     return false;
   }
 
+  // 聚合的唯一消费者是 flushSessionEventAppendAggregate 里那条 debug 日志：
+  // 没有任何限流、持久化或下游读取依赖这份数据。因此这里只做 O(1) 的账本更新
+  // （count / id / seq / kind / 结构化字节估算），不做整份 JSON 序列化。
   const aggregateKey = `${traceContext.turnId ?? "session"}:${event.type}`;
   const aggregateMap = getSessionEventAppendAggregateMap(this);
   const payloadKind = getPayloadKind(event.payload);
@@ -163,7 +171,7 @@ function recordSessionEventAppendAggregate(
     existing.eventCount += 1;
     existing.lastEventId = String(event.id);
     existing.lastSessionEventSequenceNumber = event.sequenceNumber;
-    existing.payloadBytes += measureJsonBytes(event.payload);
+    existing.estimatedPayloadBytes += estimateSessionEventPayloadBytes(event.payload);
     existing.payloadKinds[payloadKind] = (existing.payloadKinds[payloadKind] ?? 0) + 1;
     if (existing.eventCount >= SESSION_EVENT_APPEND_SUMMARY_FLUSH_COUNT) {
       flushSessionEventAppendAggregate.call(
@@ -184,7 +192,7 @@ function recordSessionEventAppendAggregate(
     firstSessionEventSequenceNumber: event.sequenceNumber,
     lastEventId: String(event.id),
     lastSessionEventSequenceNumber: event.sequenceNumber,
-    payloadBytes: measureJsonBytes(event.payload),
+    estimatedPayloadBytes: estimateSessionEventPayloadBytes(event.payload),
     payloadKinds: { [payloadKind]: 1 },
   });
   return true;
@@ -225,9 +233,11 @@ function flushSessionEventAppendAggregate(
     lastEventId: aggregate.lastEventId,
     lastSessionEventSequenceNumber: aggregate.lastSessionEventSequenceNumber,
     module: "core.runtime",
-    payloadBytes: aggregate.payloadBytes,
     payloadKinds: aggregate.payloadKinds,
     sessionEventType: aggregate.eventType,
+    // 字段名带 estimated：值是结构遍历得到的近似值（字符串 length 求和），
+    // 不是精确 JSON 字节数。下游若要按字节做阈值判断，必须先换回精确测量。
+    estimatedPayloadBytes: aggregate.estimatedPayloadBytes,
   });
 }
 
@@ -250,14 +260,6 @@ function getPayloadKind(payload: unknown): string {
     }
   }
   return "<missing>";
-}
-
-function measureJsonBytes(value: unknown): number {
-  try {
-    return Buffer.byteLength(JSON.stringify(value) ?? "null", "utf8");
-  } catch {
-    return 0;
-  }
 }
 
 async function persistDurableSessionEvent(
