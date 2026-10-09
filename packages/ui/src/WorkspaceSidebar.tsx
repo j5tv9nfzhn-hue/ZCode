@@ -128,6 +128,7 @@ import {
   type SidebarTaskGroupTogglePresentation,
 } from "@/WorkspaceSidebar/taskGroupTogglePresentation.js";
 import { WorkspacePurposeSection } from "@/WorkspaceSidebar/WorkspacePurposeSection.js";
+import { WorkspaceSidebarCollapseToggle } from "@/WorkspaceSidebar/WorkspaceSidebarCollapseToggle.js";
 import { cn } from "@/components/lib/utils.js";
 import { useCodingPlanUpgradeDialog } from "@/settings/CodingPlanUpgradeDialogProvider.js";
 import {
@@ -247,9 +248,11 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
   isDesktop = false,
   isMacDesktop: _isMacDesktop = false,
   isWindowsDesktop = false,
+  // 保持 _ 前缀：本组件已不在内部读可见性（折叠控件由 onToggleSidebar 的存在性决定，
+  // 因为本组件只在展开态被挂载），但调用方仍在传，签名不能动。
   isSidebarVisible: _isSidebarVisible = true,
-  onToggleSidebar: _onToggleSidebar,
-  toggleSidebarShortcutLabel: _toggleSidebarShortcutLabel,
+  onToggleSidebar,
+  toggleSidebarShortcutLabel,
   canGoBack: _canGoBack = false,
   canGoForward: _canGoForward = false,
   onGoBack: _onGoBack,
@@ -1254,7 +1257,15 @@ export const WorkspaceSidebar = memo(function WorkspaceSidebarComponent({
       // 这里用设计系统的结构面 token 固定侧栏层级，避免不同合成器把左侧容器混成异常灰块。
       className="flex h-full flex-col overflow-hidden"
     >
-      <div className="h-12 [app-region:drag]"></div>
+      <div className="flex h-12 items-center px-1.5 [app-region:drag]">
+        {/* 折叠控件：常驻可见，不靠 hover 显形。按钮自身 no-drag，空白处仍可拖窗。 */}
+        {onToggleSidebar ? (
+          <WorkspaceSidebarCollapseToggle
+            onToggleSidebar={onToggleSidebar}
+            toggleSidebarShortcutLabel={toggleSidebarShortcutLabel}
+          />
+        ) : null}
+      </div>
       <div className="relative flex-1 min-h-0 overflow-hidden">
         <div
           className={cn(

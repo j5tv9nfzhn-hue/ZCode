@@ -1,5 +1,4 @@
 import { PanelLeftOpen } from "lucide-react";
-import appLogoUrl from "@/assets/provider-icons/logo-zai.svg";
 import { Button } from "@/components/ui/button.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -15,7 +14,14 @@ export function WorkspaceSidebarCollapsedRail({
 
   return (
     <aside className="flex h-full flex-col overflow-hidden border-r border-border bg-background-alt">
-      <div className="flex h-9 shrink-0 items-center justify-center border-b border-border bg-background-alt px-1.5 [app-region:drag]">
+      {/*
+        高度对齐展开态的 h-12 拖拽带：折叠与展开切换时按钮不跳位。
+        图标**常驻**显示 PanelLeftOpen，不做 Logo↔图标交叉淡入——
+        本 rail 是折叠后**唯一**的展开入口，按「看得见才算控件」处理。
+        （原先沿用 DesktopTopOverlay 的 Logo 淡入式样，在只有这一个按钮的
+        36px 条里没有任何品牌展示价值，反而让唯一的入口难以识别。）
+      */}
+      <div className="flex h-12 shrink-0 items-center justify-center px-1.5 [app-region:drag]">
         <div className="[app-region:no-drag]">
           <ControlHintTooltip
             title={intl.formatMessage({ id: "workspaceSidebar.toggleSidebar" })}
@@ -26,19 +32,14 @@ export function WorkspaceSidebarCollapsedRail({
               type="button"
               variant="ghost"
               size="icon-md"
-              className="group relative overflow-hidden rounded-lg"
+              className="rounded-lg"
               onClick={onToggleSidebar}
               aria-label={intl.formatMessage({
                 id: "workspaceSidebar.toggleSidebar",
               })}
+              data-testid="workspace-sidebar-expand-toggle"
             >
-              <img
-                src={appLogoUrl}
-                alt="ZCode"
-                className="size-5 transition-opacity group-hover:opacity-0"
-                draggable={false}
-              />
-              <PanelLeftOpen className="absolute size-4 opacity-0 transition-opacity group-hover:opacity-100" />
+              <PanelLeftOpen className="size-4" />
             </Button>
           </ControlHintTooltip>
         </div>
