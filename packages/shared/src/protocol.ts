@@ -336,7 +336,7 @@ export interface AppSettings {
    */
   neutralTaskTargetAllowlist?: string[];
   /**
-   * 渗透编排（CTF Console）：开启时注册 9 个结构化产物工具（record_fact / report_finding /
+   * 渗透编排（CTF Console）：开启时注册 10 个结构化产物工具（add_goals / record_fact / report_finding /
    * add_intent / ...）并加入三个编排 subagent 角色。默认关闭，新建会话生效。
    */
   pentestOrchestrationEnabled?: boolean;
