@@ -393,6 +393,24 @@ export const TID_SETTINGS_PROJECTION_DIFF_CAPTURE_ASSISTANT_SWITCH =
 export const TID_SETTINGS_CTF_PROBE_SUBMIT = "settings-ctf-probe-submit";
 /** 渗透编排总开关（CTF Console，默认关闭）。 */
 export const TID_SETTINGS_PENTEST_ORCHESTRATION_SWITCH = "settings-pentest-orchestration-switch";
+/** 覆盖度面板容器（CTF Console 渗透编排）。 */
+export const TID_SETTINGS_CTF_COVERAGE_PANEL = "settings-ctf-coverage-panel";
+/** 覆盖度面板头部状态行（测试数 / 分母或禁用原因）。 */
+export const TID_SETTINGS_CTF_COVERAGE_STATUS = "settings-ctf-coverage-status";
+/** 覆盖度进度条轨道。 */
+export const TID_SETTINGS_CTF_COVERAGE_METER = "settings-ctf-coverage-meter";
+/** 覆盖度面板的统计正文区（比例 + 意图计数）。 */
+export const TID_SETTINGS_CTF_COVERAGE_BREAKDOWN = "settings-ctf-coverage-breakdown";
+/** 探索图 / 产物面板容器。 */
+export const TID_SETTINGS_CTF_ORCHESTRATION_PANEL = "settings-ctf-orchestration-panel";
+/** 探索图 / 产物面板头部状态行（节点计数或未开启原因）。 */
+export const TID_SETTINGS_CTF_ORCHESTRATION_STATUS = "settings-ctf-orchestration-status";
+/** 探索图 / 产物面板的可折叠分组区。 */
+export const TID_SETTINGS_CTF_ORCHESTRATION_GROUPS = "settings-ctf-orchestration-groups";
+/** 漏洞分组标题（折叠触发器）。 */
+export const TID_SETTINGS_CTF_ORCHESTRATION_FINDINGS = "settings-ctf-orchestration-findings";
+/** 漏洞结论隐私警示条。 */
+export const TID_SETTINGS_CTF_ORCHESTRATION_PRIVACY = "settings-ctf-orchestration-privacy";
 /** Memory Workspace Scope 菜单触发器 */
 export const TID_SETTINGS_MEMORY_SCOPE_TRIGGER = "settings-memory-scope-trigger";
 /** Memory Workspace Scope 图标 */

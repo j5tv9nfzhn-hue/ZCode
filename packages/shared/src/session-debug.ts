@@ -6,6 +6,8 @@ export const SESSION_DEBUG_LIMITS = {
   dedupe: 2000,
   /** 投影 diff 条数；与 core 侧环形缓冲容量一致，避免两边淘汰策略分叉。 */
   projectionDiffs: 200,
+  /** 编排快照里每一类节点的条数上限；与 core 侧 buildGraphOverview 的 limit 对齐。 */
+  pentestNodes: 50,
 } as const;
 export const sessionDebugParamsSchema = z.object({ sessionId: z.string().min(1) }).strict();
 const count = z.number().finite().nonnegative();
@@ -104,6 +106,90 @@ export const sessionDebugProjectionDiffSummarySchema = z
   })
   .strict();
 
+/**
+ * 渗透编排态势快照（CTF Console 的覆盖度面板 + 图/产物面板的唯一数据源）。
+ *
+ * **只含结论与 ID，不含漏洞证据原文**：findingList 只有 severity / vulnclass /
+ * summary，证据（命令输出、HTTP 响应）留在会话侧不进这个通道。理由与
+ * projectionDiff 相同——这个快照会被 UI 轮询并展示，不该成为敏感载荷的搬运工。
+ *
+ * 缺席即 null：编排未开启、或 Host 版本不含该字段时都是 null，
+ * UI 据此显示「未开启」而不是伪造一个空编排。
+ */
+export const sessionDebugPentestOverviewSchema = z
+  .object({
+    goals: z
+      .array(
+        z
+          .object({
+            id: z.number().int(),
+            state: z.string(),
+            summary: z.string(),
+          })
+          .strict(),
+      )
+      .max(SESSION_DEBUG_LIMITS.pentestNodes),
+    hints: z
+      .array(z.object({ id: z.number().int(), summary: z.string() }).strict())
+      .max(SESSION_DEBUG_LIMITS.pentestNodes),
+    openIntents: z
+      .array(
+        z
+          .object({
+            id: z.number().int(),
+            priority: z.number(),
+            summary: z.string(),
+            assetIds: z.array(z.number().int()),
+          })
+          .strict(),
+      )
+      .max(SESSION_DEBUG_LIMITS.pentestNodes),
+    runningIntents: z
+      .array(
+        z
+          .object({
+            id: z.number().int(),
+            summary: z.string(),
+            owner: z.string().optional(),
+          })
+          .strict(),
+      )
+      .max(SESSION_DEBUG_LIMITS.pentestNodes),
+    recentFacts: z
+      .array(
+        z
+          .object({
+            id: z.number().int(),
+            summary: z.string(),
+            confidence: z.string().optional(),
+          })
+          .strict(),
+      )
+      .max(SESSION_DEBUG_LIMITS.pentestNodes),
+    findingList: z
+      .array(
+        z
+          .object({
+            id: z.number().int(),
+            vulnclass: z.string(),
+            severity: z.string(),
+            summary: z.string(),
+          })
+          .strict(),
+      )
+      .max(SESSION_DEBUG_LIMITS.pentestNodes),
+    doneIntentsTotal: count,
+    frontierOpen: count,
+    coverage: z
+      .object({
+        denominator: count,
+        tested: count,
+        pct: count,
+      })
+      .strict(),
+  })
+  .strict();
+
 export const sessionDebugSnapshotSchema = z
   .object({
     sessionId: z.string(),
@@ -121,6 +207,8 @@ export const sessionDebugSnapshotSchema = z
       changed: 0,
       evicted: 0,
     }),
+    /** 渗透编排态势；未开启编排时为 null。 */
+    pentestOverview: sessionDebugPentestOverviewSchema.nullable().default(null),
     cache: z
       .object({
         hitRateRequestCount: count,
@@ -133,6 +221,7 @@ export const sessionDebugSnapshotSchema = z
   })
   .strict();
 export type SessionDebugSnapshot = z.infer<typeof sessionDebugSnapshotSchema>;
+export type SessionDebugPentestOverview = z.infer<typeof sessionDebugPentestOverviewSchema>;
 export type SessionDebugNetworkEntry = z.infer<typeof sessionDebugNetworkEntrySchema>;
 export type SessionDebugProjectionDiff = z.infer<typeof sessionDebugProjectionDiffSchema>;
 export type SessionDebugProjectionDiffSummary = z.infer<

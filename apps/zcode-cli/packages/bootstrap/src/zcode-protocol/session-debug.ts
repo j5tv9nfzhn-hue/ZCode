@@ -8,6 +8,7 @@ import {
   calculateOutputTps,
   sessionDebugParamsSchema,
   zcodeTaskNetworkDebugStatusFromPayload,
+  type SessionDebugPentestOverview,
   type SessionDebugProjectionDiff,
   type SessionDebugProjectionDiffSummary,
   type SessionDebugSnapshot,
@@ -41,6 +42,8 @@ function emptySnapshot(sessionId: string): SessionDebugSnapshot {
       evicted: 0,
     },
     cache: null,
+    // 编排态势不是累积量：它每次都现读，缺席即「未开启」。
+    pentestOverview: null,
   };
 }
 
@@ -59,7 +62,26 @@ interface ProjectionDiffRuntimePort {
   };
 }
 
-type DebugSessionRecord = { app: { sessionId: string; runtime?: ProjectionDiffRuntimePort } };
+/**
+ * 渗透编排态势的读取端口。与上面同理走结构化窄类型，但**是异步的**：
+ * 快照来自 SQLite（core 的 PentestOrchestrationPort.graphOverview），
+ * 与 diff 的内存环形缓冲不同，不能同步取。
+ */
+interface PentestOverviewRuntimePort {
+  getPentestOrchestrationOverview?: () => Promise<SessionDebugPentestOverview | undefined>;
+}
+
+interface DebugLogger {
+  warn?(message: string, context?: Record<string, unknown>): void;
+}
+
+type DebugSessionRecord = {
+  app: {
+    sessionId: string;
+    logger?: DebugLogger;
+    runtime?: ProjectionDiffRuntimePort & PentestOverviewRuntimePort;
+  };
+};
 function remember(keys: Set<string>, key: string): boolean {
   if (keys.has(key)) return false;
   keys.add(key);
@@ -214,13 +236,43 @@ function readProjectionDiffs(record: SessionRecord): {
 
 export function readSessionDebug(record: SessionRecord): SessionDebugSnapshot {
   const base = observations.get(record)?.snapshot ?? emptySnapshot(record.app.sessionId);
-  return { ...base, ...readProjectionDiffs(record) };
+  return { ...base, ...readProjectionDiffs(record), pentestOverview: null };
 }
 
-export function querySessionDebug(
+/**
+ * 实时读取编排态势。
+ *
+ * 与 diff 同样现读（按 UI 拉取节奏），但多一层：它可能 reject（SQLite 锁、
+ * 迁移缺席等）。调试面**不能因为一个可选面板读不到就把整个 session/debug 拉黑**，
+ * 所以失败一律降级成 null + 一条 warn 日志。
+ */
+async function readPentestOverview(record: SessionRecord): Promise<SessionDebugPentestOverview | null> {
+  const runtime = record.app.runtime;
+  const read = runtime?.getPentestOrchestrationOverview;
+  if (!runtime || typeof read !== "function") return null;
+  try {
+    return (await read.call(runtime)) ?? null;
+  } catch (error) {
+    record.app.logger?.warn?.("Read pentest orchestration overview failed", {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      event: "session.debug.pentest_overview_failed",
+      module: "bootstrap.zcode-protocol.session-debug",
+      sessionId: record.app.sessionId,
+    });
+    return null;
+  }
+}
+
+export async function readSessionDebugWithPentest(
+  record: SessionRecord,
+): Promise<SessionDebugSnapshot> {
+  return { ...readSessionDebug(record), pentestOverview: await readPentestOverview(record) };
+}
+
+export async function querySessionDebug(
   context: ZCodeProtocolAgentServerContext,
   rawParams: unknown,
-): SessionDebugSnapshot {
+): Promise<SessionDebugSnapshot> {
   const params = sessionDebugParamsSchema.parse(rawParams);
-  return readSessionDebug(requireSession(context, params.sessionId));
+  return await readSessionDebugWithPentest(requireSession(context, params.sessionId));
 }

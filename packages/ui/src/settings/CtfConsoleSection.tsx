@@ -2,10 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useServices } from "@/hooks/useServices.js";
 import { CtfConsoleConfigPanel } from "@/settings/CtfConsoleConfigPanel.js";
+import { CtfConsoleCoveragePanel } from "@/settings/CtfConsoleCoveragePanel.js";
 import { CtfConsoleLogPanel, type CtfConsoleLogEntry } from "@/settings/CtfConsoleLogPanel.js";
+import { CtfConsoleOrchestrationPanel } from "@/settings/CtfConsoleOrchestrationPanel.js";
 import { CtfConsoleProbePanel } from "@/settings/CtfConsoleProbePanel.js";
 import { CtfConsoleProjectionDiffPanel } from "@/settings/CtfConsoleProjectionDiffPanel.js";
-import type { SessionDebugProjectionDiff, SessionDebugSnapshot } from "@zcode/shared";
+import type {
+  SessionDebugPentestOverview,
+  SessionDebugProjectionDiff,
+  SessionDebugSnapshot,
+} from "@zcode/shared";
 
 const MAX_LOG_ENTRIES = 300;
 const POLL_INTERVAL_MS = 3000;
@@ -151,6 +157,11 @@ export function CtfConsoleSection({
     evicted: 0,
   });
 
+  // 渗透编排态势：undefined=快照不可用（未就绪 / 远程不可达），null=编排未开启。
+  const [pentestOverview, setPentestOverview] = useState<
+    SessionDebugPentestOverview | null | undefined
+  >(undefined);
+
   const refreshProjectionDiffs = useCallback(async () => {
     if (!workspacePath || !sessionIdRef.current) return;
     try {
@@ -161,6 +172,7 @@ export function CtfConsoleSection({
       });
       setDiffEntries(snapshot.projectionDiffs);
       setDiffSummary(snapshot.projectionDiffSummary);
+      setPentestOverview(snapshot.pentestOverview);
     } catch {
       // 远程 workspace 或无 runtime 资产：保持「未开启」占位，不向设置页抛错。
     }
@@ -228,6 +240,10 @@ export function CtfConsoleSection({
       />
 
       <CtfConsoleLogPanel entries={entries} live={live} onClear={handleClear} />
+
+      <CtfConsoleCoveragePanel overview={pentestOverview} />
+
+      <CtfConsoleOrchestrationPanel overview={pentestOverview} />
 
       <CtfConsoleProjectionDiffPanel
         entries={diffEntries}
