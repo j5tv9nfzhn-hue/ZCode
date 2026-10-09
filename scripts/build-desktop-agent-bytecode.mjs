@@ -12,14 +12,19 @@ const defaultEntryPath = join(repoRoot, "apps/zcode-cli/packages/cli/dist/zcode.
 const runtimeSourcePath = join(import.meta.dirname, "desktop-agent-bytecode-runtime.cjs");
 const compilerPath = join(import.meta.dirname, "compile-desktop-agent-bytecode.cjs");
 
+// 产物文件名按内容摘要命名，所以同名不同内容只可能来自被截断/损坏的历史残留。
+// 默认构建链会反复跑这一步，若这种情况直接抛错，一次坏文件就会让后续每次重建都失败
+// （必须人工删文件才能恢复）。这里自愈：删掉损坏文件后按本次产物原样重写，
+// 仍然保持"先写不可变依赖、最后原子替换入口"的顺序语义。
 async function publishImmutable(path, contents) {
   try {
     await writeFile(path, contents, { flag: "wx" });
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
-    if (!(await readFile(path)).equals(contents)) {
-      throw new Error(`已有字节码资源损坏: ${path}`);
-    }
+    if ((await readFile(path)).equals(contents)) return;
+    console.warn(`[bytecode] 清理损坏的旧产物后重写: ${path}`);
+    await rm(path, { force: true });
+    await writeFile(path, contents, { flag: "wx" });
   }
 }
 
@@ -46,12 +51,15 @@ export async function buildDesktopAgentBytecode({
     metadata.bytecodeFile = bytecodeFile;
     metadata.sourceFile = basename(entryPath);
     // 先写不可变依赖，最后原子替换入口；失败时上次可用的加载器仍能找到自己的字节码。
+    const runtimePath = join(directory, runtimeFile);
     await publishImmutable(bytecodePath, await readFile(temporary));
-    await publishImmutable(join(directory, runtimeFile), runtimeSource);
+    await publishImmutable(runtimePath, runtimeSource);
     const loader = `#!/usr/bin/env node\n"use strict";\nconst metadata = ${JSON.stringify(metadata)};\nrequire(${JSON.stringify(`./${runtimeFile}`)}).loadBytecode(metadata, module, require).catch(error => {\n  process.stderr.write(String(error.stack ?? error) + "\\n");\n  process.exitCode = 1;\n});\n`;
     await writeFile(`${temporary}.cjs`, loader, { mode: 0o755 });
     await rename(`${temporary}.cjs`, loaderPath);
-    return { loaderPath, bytecodePath, metadata };
+    // runtimePath 一并返回：默认打包链要把它和 loader/.jsc 一起复制到
+    // bundled-agents/<platformKey>/glm，文件名只能从这里的哈希推导，不该在调用方重算。
+    return { loaderPath, bytecodePath, runtimePath, metadata };
   } finally {
     await Promise.all([temporary, `${temporary}.cjs`].map((file) => rm(file, { force: true })));
   }
