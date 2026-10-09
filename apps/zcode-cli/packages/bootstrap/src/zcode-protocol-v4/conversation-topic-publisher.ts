@@ -10,7 +10,6 @@
 //   因此「snapshot(W)+续流 ≡ 全量重放」黄金测试可直接覆盖恢复路径。
 // - 重订阅 = 替换：同 connectionId 重复 subscribe 即作废旧订阅并清其
 //   flush buffer，旧 subscriptionId 不再产帧，客户端按 subId 丢弃旧代际帧。
-import { Buffer } from "node:buffer";
 import { SessionEventType, type SessionEvent } from "@zcode/contracts";
 import type {
   CommandEnvelope,
@@ -50,6 +49,12 @@ import {
   type SessionUsageSeed,
 } from "./product-projection.js";
 import type { TopicFrameReservation } from "./topic-frame-reservation.js";
+import {
+  DELTAS_FRAME_EXACT_MEASUREMENT_RATIO,
+  EMPTY_DELTAS_FRAME_BYTES,
+  conversationDeltasBytesUpperBoundIncrement,
+  jsonUtf8ByteLength,
+} from "./conversation-deltas-frame-bytes.js";
 
 interface LogEntry {
   seq: number;
@@ -63,13 +68,10 @@ const TERMINAL_PLAN_STATUSES: ReadonlySet<ToolCallRow["status"]> = new Set([
 ]);
 
 /**
- * cold replay 会高频测量临时 delta；TextEncoder 会为每次测量再分配完整 Uint8Array。
- * CLI 已固定运行在 Node，这里对同一 JSON 文本直接计算精确 UTF-8 字节数，不做近似估算。
+ * flush buffer 的字节记账规则（增量上界 + 阈值外精确回退）不住在这里，理由与它为什么
+ * 是纯函数同样重要：它是 overflow 保证的那条不变式，得能被单独钉住。见
+ * conversation-deltas-frame-bytes.ts。
  */
-function coldHydrationJsonByteLength(value: unknown): number {
-  const json = JSON.stringify(value);
-  return json === undefined ? 0 : Buffer.byteLength(json, "utf8");
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -100,7 +102,12 @@ interface Subscription {
   workflowRunDeltas: boolean;
   /** flush buffer：push 时已过 profile 过滤与该订阅的编码，flush 时 coalesce 打帧。 */
   buffer: ConversationDelta[];
-  bufferBytes: number;
+  /**
+   * buffer 帧（`{kind:"deltas",deltas}`）的 UTF-8 字节**上界**，不是精确值。
+   * 供下一次 append 增量累加，跳过逐事件的整帧序列化；空 buffer 的取值是
+   * `EMPTY_DELTAS_FRAME_BYTES`（空帧也非空），不是 0。
+   */
+  bufferBytesUpperBound: number;
   /** buffer 超限后只保留恢复意图，不继续为慢订阅者积压 delta。 */
   resyncRequired: boolean;
   /** 帧区间记账水位：下一帧 fromSeq（(fromSeq, toSeq] 语义）。 */
@@ -183,7 +190,8 @@ type ConversationSubscriberBufferResult =
   | {
       kind: "buffered";
       deltas: ConversationDelta[];
-      encodedBytes: number;
+      /** 帧的 UTF-8 字节**上界**（不是精确值，除非刚走过精确测量分支）。 */
+      bytesUpperBound: number;
     }
   | { kind: "overflow" };
 
@@ -199,9 +207,15 @@ function nonNegativeHardBound(value: number | undefined, maximum: number, name: 
  * profile filter 后的 delta 进入此纯函数；先与现有 buffer 合并并 coalesce，
  * 再按 op/UTF-8 bytes 双限额裁决——限额必须真正执行，只存裸 delta[] 不裁决的话，
  * 慢订阅者会持续堆积并最终生成不可控的大帧。
+ *
+ * bytes 限额是**增量**的：`currentBytesUpperBound` 是帧字节的上界而非精确值，每步只按本批
+ * delta 序列化字节累加，不再逐事件把整个累积 buffer 重新序列化一遍（那条 O(buffer) 的账在
+ * 一段流上被付 n 次 = O(n²)）。`overflow` 仍然只由越过阈值后的整帧精确测量产出，估算从不
+ * 单独触发降级。不变式的证明与阈值取值见 conversation-deltas-frame-bytes.ts。
  */
 function appendConversationSubscriberBuffer(
   current: readonly ConversationDelta[],
+  currentBytesUpperBound: number,
   incoming: readonly ConversationDelta[],
   limits: ConversationSubscriberBufferLimits = {},
 ): ConversationSubscriberBufferResult {
@@ -217,9 +231,14 @@ function appendConversationSubscriberBuffer(
   );
   const deltas = coalesceConversationDeltas([...current, ...incoming]);
   if (deltas.length > maxOps) return { kind: "overflow" };
+  const estimatedBytes =
+    currentBytesUpperBound + conversationDeltasBytesUpperBoundIncrement(incoming);
+  if (estimatedBytes <= maxBytes * DELTAS_FRAME_EXACT_MEASUREMENT_RATIO) {
+    return { kind: "buffered", deltas, bytesUpperBound: estimatedBytes };
+  }
   const encodedBytes = utf8JsonByteLength({ kind: "deltas", deltas });
   if (encodedBytes > maxBytes) return { kind: "overflow" };
-  return { kind: "buffered", deltas, encodedBytes };
+  return { kind: "buffered", deltas, bytesUpperBound: encodedBytes };
 }
 
 export class ConversationTopicPublisher {
@@ -582,18 +601,23 @@ export class ConversationTopicPublisher {
     for (const subscription of this.subscriptions.values()) {
       if (subscription.resyncRequired) continue;
       const filtered = this.encodeDeltasForSubscription(deltas, subscription);
-      const next = appendConversationSubscriberBuffer(subscription.buffer, filtered, {
-        maxOps: this.subscriberBufferMaxOps,
-        maxBytes: this.subscriberBufferMaxBytes,
-      });
+      const next = appendConversationSubscriberBuffer(
+        subscription.buffer,
+        subscription.bufferBytesUpperBound,
+        filtered,
+        {
+          maxOps: this.subscriberBufferMaxOps,
+          maxBytes: this.subscriberBufferMaxBytes,
+        },
+      );
       if (next.kind === "overflow") {
         subscription.buffer = [];
-        subscription.bufferBytes = 0;
+        subscription.bufferBytesUpperBound = EMPTY_DELTAS_FRAME_BYTES;
         subscription.resyncRequired = true;
         continue;
       }
       subscription.buffer = next.deltas;
-      subscription.bufferBytes = next.encodedBytes;
+      subscription.bufferBytesUpperBound = next.bytesUpperBound;
     }
   }
 
@@ -654,7 +678,7 @@ export class ConversationTopicPublisher {
     this.wireSnapshotBytesUpperBound = candidate.wireSnapshotBytesUpperBound;
     for (const subscription of this.subscriptions.values()) {
       subscription.buffer = [];
-      subscription.bufferBytes = 0;
+      subscription.bufferBytesUpperBound = EMPTY_DELTAS_FRAME_BYTES;
       subscription.resyncRequired = true;
       subscription.sentSeq = 0;
       // adopt 后旧 projection 上预留的帧不可再 commit；失败 replay 从未触碰该 reservation。
@@ -703,7 +727,7 @@ export class ConversationTopicPublisher {
         });
         if (wireDeltas.length > 0) {
           encodedGrowthSinceMeasurement +=
-            coldHydrationJsonByteLength({ kind: "deltas", deltas: wireDeltas }) +
+            jsonUtf8ByteLength({ kind: "deltas", deltas: wireDeltas }) +
             HYDRATION_EVENT_WIRE_OVERHEAD_BYTES;
         }
       }
@@ -771,7 +795,7 @@ export class ConversationTopicPublisher {
       profile,
       workflowRunDeltas: params.workflowRunDeltas === true,
       buffer: [],
-      bufferBytes: 0,
+      bufferBytesUpperBound: EMPTY_DELTAS_FRAME_BYTES,
       resyncRequired: false,
       sentSeq: 0,
       inFlight: null,
@@ -888,7 +912,7 @@ export class ConversationTopicPublisher {
     if (subscription.inFlight) return subscription.inFlight;
     if (subscription.resyncRequired) {
       subscription.buffer = [];
-      subscription.bufferBytes = 0;
+      subscription.bufferBytesUpperBound = EMPTY_DELTAS_FRAME_BYTES;
       return this.reserveFrame(
         subscription,
         {
@@ -915,7 +939,7 @@ export class ConversationTopicPublisher {
       payload: { kind: "deltas", deltas },
     };
     subscription.buffer = [];
-    subscription.bufferBytes = 0;
+    subscription.bufferBytesUpperBound = EMPTY_DELTAS_FRAME_BYTES;
     return this.reserveFrame(subscription, frame, false, "online");
   }
 
@@ -940,7 +964,7 @@ export class ConversationTopicPublisher {
 
     const previous = {
       buffer: subscription.buffer,
-      bufferBytes: subscription.bufferBytes,
+      bufferBytesUpperBound: subscription.bufferBytesUpperBound,
       resyncRequired: subscription.resyncRequired,
       sentSeq: subscription.sentSeq,
       inFlight: subscription.inFlight,
@@ -950,7 +974,7 @@ export class ConversationTopicPublisher {
     // 这会把客户端未收到的帧误记为已送达。same-sub recovery 必须直接 supersede。
     subscription.inFlight = null;
     subscription.buffer = [];
-    subscription.bufferBytes = 0;
+    subscription.bufferBytesUpperBound = EMPTY_DELTAS_FRAME_BYTES;
     subscription.resyncRequired = false;
 
     const base = request.base;
@@ -1014,7 +1038,7 @@ export class ConversationTopicPublisher {
     reservation: TopicFrameReservation<ConversationTopicFrame>,
     previous: Pick<
       Subscription,
-      "buffer" | "bufferBytes" | "resyncRequired" | "sentSeq" | "inFlight"
+      "buffer" | "bufferBytesUpperBound" | "resyncRequired" | "sentSeq" | "inFlight"
     >,
   ): () => boolean {
     let rolledBack = false;
@@ -1028,17 +1052,22 @@ export class ConversationTopicPublisher {
       }
       const recoveryBuffer = subscription.buffer;
       const recoveryResyncRequired = subscription.resyncRequired;
-      const merged = appendConversationSubscriberBuffer(previous.buffer, recoveryBuffer, {
-        maxOps: this.subscriberBufferMaxOps,
-        maxBytes: this.subscriberBufferMaxBytes,
-      });
+      const merged = appendConversationSubscriberBuffer(
+        previous.buffer,
+        previous.bufferBytesUpperBound,
+        recoveryBuffer,
+        {
+          maxOps: this.subscriberBufferMaxOps,
+          maxBytes: this.subscriberBufferMaxBytes,
+        },
+      );
       if (merged.kind === "overflow" || previous.resyncRequired || recoveryResyncRequired) {
         subscription.buffer = [];
-        subscription.bufferBytes = 0;
+        subscription.bufferBytesUpperBound = EMPTY_DELTAS_FRAME_BYTES;
         subscription.resyncRequired = true;
       } else {
         subscription.buffer = merged.deltas;
-        subscription.bufferBytes = merged.encodedBytes;
+        subscription.bufferBytesUpperBound = merged.bytesUpperBound;
         subscription.resyncRequired = false;
       }
       subscription.sentSeq = previous.sentSeq;

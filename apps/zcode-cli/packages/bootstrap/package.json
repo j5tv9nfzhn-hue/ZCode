@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "tsx --tsconfig ../../../../tsconfig.base.json --test test/rowActionsMaterialization.test.ts",
     "clean": "node ../../scripts/clean-dist.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src",

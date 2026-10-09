@@ -64,10 +64,45 @@ function appendToRow(row: ConversationRow, path: StreamablePath, append: string)
   }
 }
 
+/**
+ * 调用方持有的 `rowId -> window 下标` 索引（可选）。
+ *
+ * 为什么需要它：投影的实时路径每个事件都会调 `applyConversationDeltas`，而流式
+ * `row.delta` 是**每个 token 一次**的事件。原实现对每条 delta 都
+ * `window.findIndex(...)`，那是 O(rows)；rows.window 持有整段会话（投影内部快照
+ * 保持全量），于是流式会话下这里是 O(n²)。
+ *
+ * 投影侧本来就已经维护着这张索引（`ProductProjection.rowIndexById`，每轮 apply
+ * 后同步），只是没有把它传进来。
+ *
+ * **正确性前提**：传入的索引必须对 `snapshot` 本身有效，且批次内不发生会平移下标的
+ * delta（只有 `row.removed` 会）。`applyConversationDeltas` 会在批次含 `row.removed`
+ * 时主动丢弃索引退回 findIndex，与投影侧 `updateRowIndexAfterImmutableApply`
+ * 重建整表的判据保持一致。
+ */
+export type ConversationRowIndex = ReadonlyMap<number, number>;
+
+/** 在有可信索引时用它定位，否则退回 findIndex。 */
+function findRowIndex(
+  snapshot: ConversationSnapshot,
+  rowId: number,
+  rowIndex: ConversationRowIndex | undefined,
+): number {
+  if (rowIndex) {
+    const index = rowIndex.get(rowId);
+    // 索引里没有不等于行不存在（索引可能来自更早的快照），仍需回退确认。
+    return index !== undefined && snapshot.rows.window[index]?.rowId === rowId
+      ? index
+      : snapshot.rows.window.findIndex((row) => row.rowId === rowId);
+  }
+  return snapshot.rows.window.findIndex((row) => row.rowId === rowId);
+}
+
 /** 应用单条 delta，返回新快照（入参不被修改）。 */
 export function applyConversationDelta(
   snapshot: ConversationSnapshot,
   delta: ConversationDelta,
+  rowIndex?: ConversationRowIndex,
 ): ConversationSnapshot {
   switch (delta.op) {
     case "row.appended":
@@ -81,7 +116,7 @@ export function applyConversationDelta(
         },
       };
     case "row.upserted": {
-      const index = snapshot.rows.window.findIndex((row) => row.rowId === delta.row.rowId);
+      const index = findRowIndex(snapshot, delta.row.rowId, rowIndex);
       // 未加载 rowId = no-op（被逐出的行只能经 rows/range 取回）。
       if (index === -1) return snapshot;
       const window = [...snapshot.rows.window];
@@ -109,7 +144,7 @@ export function applyConversationDelta(
       };
     }
     case "row.delta": {
-      const index = snapshot.rows.window.findIndex((row) => row.rowId === delta.rowId);
+      const index = findRowIndex(snapshot, delta.rowId, rowIndex);
       const target = snapshot.rows.window[index];
       if (index === -1 || target === undefined) return snapshot;
       const window = [...snapshot.rows.window];
@@ -134,14 +169,26 @@ export function applyConversationDelta(
   }
 }
 
-/** 按序应用一串 delta。 */
+/**
+ * 按序应用一串 delta。
+ *
+ * `rowIndex` 是可选的可信索引（见 `ConversationRowIndex`）。批次里只要出现
+ * `row.removed`——它是唯一会平移 window 下标的 delta——就整批丢弃索引退回
+ * findIndex：宁可慢一次，也不能拿一张已经错位的索引算出错误的下标。
+ * 判据与投影侧 `updateRowIndexAfterImmutableApply` 的整表重建条件一致。
+ */
 export function applyConversationDeltas(
   snapshot: ConversationSnapshot,
   deltas: readonly ConversationDelta[],
+  rowIndex?: ConversationRowIndex,
 ): ConversationSnapshot {
+  const usableIndex =
+    rowIndex !== undefined && !deltas.some((delta) => delta.op === "row.removed")
+      ? rowIndex
+      : undefined;
   let current = snapshot;
   for (const delta of deltas) {
-    current = applyConversationDelta(current, delta);
+    current = applyConversationDelta(current, delta, usableIndex);
   }
   return current;
 }

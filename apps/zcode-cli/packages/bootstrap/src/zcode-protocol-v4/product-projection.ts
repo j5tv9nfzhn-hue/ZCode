@@ -73,6 +73,10 @@ import {
   ZCODE_FILE_STREAMING_TOOL_INPUT_PREVIEW_MIN_INTERVAL_MS,
   zcodeBackgroundTaskNotificationToolUpdateStatus,
 } from "@zcode/shared";
+import {
+  deltasCanChangeRowActions,
+  rowActionsEqual,
+} from "./row-actions-materialization.js";
 import type {
   AssistantTextRow,
   ApiRetryState,
@@ -397,6 +401,14 @@ function positiveInteger(value: number, fallback: number): number {
 function nonNegativeInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
 }
+
+/**
+ * 这串 delta 是否可能改变任何一行的 `actions`；以及 `actions` 的浅相等比较。
+ *
+ * 抽到独立模块是因为它们是**纯函数、且是本轮性能改动里风险最高的一环**——
+ * gate 判错会让客户端长期显示过期入口（比慢更糟）。放在 5000+ 行的投影文件里
+ * 无法被单测直接覆盖。
+ */
 
 interface FileToolInputPreviewState {
   lastPublishedAt: number | null;
@@ -1047,7 +1059,16 @@ export class ProductProjection {
     // 旧实现只维护 side-map/最新行判断，UI action 由别处推断，cold/tool-only/failed
     // 轮会出现“入口可见但 target 不可解析”，新目标出现后旧入口也不会撤销。
     const deltas = materializeActions
-      ? [...reducedWithSubagents, ...this.materializeCommandRowActions(reducedWithSubagents)]
+      ? [
+          ...reducedWithSubagents,
+          // 流式 row.delta 是每 token 一次的事件，而 materializeCommandRowActions
+          // 要对全部行做一次全量 apply + new Map + 两遍扫描 + 每行 2 次 JSON.stringify。
+          // 这些 delta 按定义改不了任何一行的 actions（见 deltasCanChangeRowActions），
+          // 直接跳过整段物化。
+          ...(deltasCanChangeRowActions(reducedWithSubagents)
+            ? this.materializeCommandRowActions(reducedWithSubagents)
+            : []),
+        ]
       : reducedWithSubagents;
     const finalDeltas = this.attachRevision(clearSettledOutputPreviews(deltas));
     // 计数必须在把 deltas 应用到 snapshot 之前并入，才能和它们同一事务提交。
@@ -1058,7 +1079,10 @@ export class ProductProjection {
     } else {
       const previousRowsLength = this.snapshot.rows.window.length;
       this.snapshot = {
-        ...applyConversationDeltas(this.snapshot, committedDeltas),
+        // 把已维护的 rowIndexById 传进去：流式 row.delta 是每 token 一次的事件，
+        // 原实现每条都 window.findIndex（O(rows)），长会话下这里就是 O(n²)。
+        // 正确性由 applyConversationDeltas 自己把关（含 row.removed 时整批弃用索引）。
+        ...applyConversationDeltas(this.snapshot, committedDeltas, this.rowIndexById),
         seq: event.sequenceNumber,
       };
       this.updateRowIndexAfterImmutableApply(previousRowsLength, committedDeltas);
@@ -1393,7 +1417,7 @@ export class ProductProjection {
         else delete nextActions.canFork;
       }
       const actions = Object.keys(nextActions).length > 0 ? nextActions : undefined;
-      if (JSON.stringify(actions) === JSON.stringify(row.actions)) continue;
+      if (rowActionsEqual(actions, row.actions)) continue;
       const nextRow: ConversationRow = { ...row, actions };
       if (!actions) delete nextRow.actions;
       deltas.push({ op: "row.upserted", row: nextRow });
