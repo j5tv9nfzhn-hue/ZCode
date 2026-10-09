@@ -4,7 +4,7 @@
   <img src="public/logo/icons/1024x1024.png" alt="ZCode" width="128" height="128" />
 </div>
 <p align="center">
-  简体中文 | <a href="README.en.md">English</a>
+  简体中文（本分支唯一入口；2026-10-09 起删除已漂移的英文镜像）
 </p>
 
 > ## ⚠️ 分支定位声明（请先读这一段）
