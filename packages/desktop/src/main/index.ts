@@ -1995,7 +1995,11 @@ app.whenReady().then(async () => {
     homeDir: app.getPath("home"),
     logger,
   });
-  await installWindowsOpenFolderContextMenu({
+  // 注册表持久项不阻塞首窗：8 次 reg.exe spawn + 注册表写入会通知 Explorer 重建右键菜单，
+  // 卡在 ensurePrimaryWindow 之前会让每次冷启动都多一段可感知的停顿。
+  // 函数内部已 try/catch 全部失败，这里不 await 也不会有未处理拒绝；
+  // 进程提前退出导致本次没写完也无妨，下次启动会重试。
+  void installWindowsOpenFolderContextMenu({
     platform: process.platform,
     executablePath: process.execPath,
     argv: process.argv,
