@@ -1,9 +1,11 @@
 # 中性任务模式（Neutral Task Mode）设计说明
 
-> 状态：第一阶段已实现（执行姿态注入 + 请求投影层 + 作用域登记表 + 设置项 + 内置编排技能 + 可选 CoT Prefill）。
+> 状态：第一阶段已实现（执行姿态注入 + 请求投影层 + 作用域登记表 + 设置项 + 结构化编排层 + 可选 CoT Prefill）。
 > 2026-10-08 §1.9 方向逆转：真实 user 输入**原文保留**，删除式中性化不再作用于用户输入（§1.9 / 不变量 2）。
 > 2026-10-08 §1.10 主机制定档：**B 主（身份层断言授权）/ A 垫底（删除式中和仅作 provider 风控规避备用档）**；
 > 投影层与身份层正交，A 与 B 互斥（不变量 2e）。
+> **⚠️ §1.10 的 B 档在本仓库代码中尚未实现**——实测在 TEMP harness 内完成，验证代码未入库。
+> 当前真正生效的只有 §1.9 的姿态注入。详见 §1.10 顶部状态框。
 > 第二阶段（buff 阶梯、行为判据 judge、机械式停手检测续跑）见 §6。CoT Prefill 对 glm-5.3-flash 实测无增量（§1.2），仅作可选开关保留。
 
 ## 1. 要解决的问题
@@ -286,6 +288,18 @@ HTTP 客户端（`http_request` / `http_batch`），脚本不拦截模型的工�
 
 ### 1.10 主机制定为身份层断言：B 主 / A 垫底（2026-10-08，E2E 实测之后）
 
+> **状态：机制已定档并完成过程层实测，但【本仓库代码中尚未实现】。**
+>
+> 本节全部数据来自 TEMP 下的抓包 harness（真实 provider + 真实目标 + `mode:yolo`），
+> 结论可信且直接决定了 A/B 的优先级；但**验证它的代码从未进入本仓库**。核实
+> （2026-10-09）：`core/src/context/sections/identity.ts` 的 `SECURITY_NOTICE` 是一个
+> **零分支的 `const`**，全仓 6 个相关标识符（`identityAssertion` / `engagementIdentity` /
+> `securityNoticeOverride` / `authorizedOperator` / `identityOverride` / `identityStance`）
+> 零命中，设置侧也没有对应字段。
+>
+> 因此**当前 shipped 的只有 §1.9 的姿态注入**。本节是待接线规格，不是现状描述。
+> 下面「B 主」的每一条描述都是设计意图，不是当前行为。
+
 §1.9 之后的真实 E2E（真实 provider + 真实公网目标 + `mode:yolo`）给出决定性的层间归因：
 
 | 臂 | 拨的层 | 工具调用 | 拒答话术 |
@@ -358,8 +372,12 @@ per-意图 ledger/planner 编排（内置 `pentest` 技能已覆盖，且「聚�
 实现必须同时满足下面几条，任何一条被破坏就是功能回归。
 
 > **2026-10-08 增补**：第 2 条系列按 §1.7 → §1.8 → §1.9 三次整改，现状见
-> 2 条与 2c / 2d 注；2b 已废止。**§1.10 起主机制转为身份层断言（B 主 / A 垫底）**，
-> 2 条仍是投影层的行为约束，新增 2e 约束两条道路的互斥关系。
+> 2 条与 2c / 2d 注；2b 已废止。§1.10 把主机制定为身份层断言（B 主 / A 垫底），
+> 新增 2e 约束两条道路的互斥关系。
+>
+> **2e 描述的是待接线状态**：B 档在仓库代码中尚未实现（见 §1.10 顶部状态框），
+> 当前只有 §1.9 的能力保持投影真正生效。2e 在 A 档被接上之前无法被违反，也因此
+> 暂无实际约束力。
 
 1. **只在请求投影层生效**：`runModelTextRequest` 组装 `modelRequest` 的那一刻
    （`core/src/runtime/methods/model.ts`）。canonical 历史、落盘 transcript、UI
@@ -423,8 +441,14 @@ per-意图 ledger/planner 编排（内置 `pentest` 技能已覆盖，且「聚�
     解除的是*本地上下文预算*的截断，而不是绕过 provider 侧校验。
     决策收敛在 `resolveModelMaxOutputTokens`（helpers/model-output-budget.ts），
     恒返回正整数。破坏此条即「开关一开就全盘失败」。
-5. **聚合状态不放在模型上下文里**：编排状态存在工作区 ledger 文件，由主 session
-   读写；每个执行步骤跑在独立的短命 Agent（child）上下文里，只看到一小段任务。
+5. **聚合状态不放在模型上下文里**：编排状态存在 `po_*` 表（SQLite，迁移
+   `0023_pentest_orchestration`），由编排循环读写；每个执行步骤跑在独立的短命
+   Agent（child）上下文里，只看到一条意图与少量背景。
+   > 2026-10-09 更正：本条原先写的是「工作区 ledger 文件 `.zcode/pentest/ledger.md`」。
+   > 那套散文 ledger 已被结构化 `po_node` / `po_edge` / `po_asset` / `po_scope`
+   > 四张表取代——不变量说的是「状态不进模型上下文」，而把状态放进工作区上的
+   > Markdown 恰恰违反它（模型读得到那个文件）。详见
+   > [pentest-orchestration.md](pentest-orchestration.md) §4。
 6. **默认关闭**：`neutralTaskProjection` 是 opt-in 设置，缺席即关闭（fail-closed），
    保持旧 Host / 旧会话行为不变。
 7. **不改环境变量面**：两个能力都走 `AppSettings → session/requestRuntimePreferences
@@ -483,16 +507,22 @@ per-意图 ledger/planner 编排（内置 `pentest` 技能已覆盖，且「聚�
 - `restoreToolCallNameForNeutralTaskProjection`：入站还原。
 - 开启时打印一条 `model.request.neutral_task_projection` debug 日志（只记条数）。
 
-### 3.2 编排技能（聚合层）
+### 3.2 编排层（聚合层）
 
-`packages/bundled-skills/skills/pentest/SKILL.md`（随 CLI 分发的内置技能，
-不需要插件/市场；bundled-skills 根目录自动发现）。
+> **2026-10-09 状态更正**：本节原先描述的是 `packages/bundled-skills/skills/pentest/SKILL.md`
+> 的**散文 ledger** 契约（结果写回 `.zcode/pentest/ledger.md`）。那套机制已被结构化
+> 编排取代——`po_*` 四张表 + 10 个门控工具 + 三个角色子代理（goals / planner /
+> worker）+ 事件驱动的编排循环。**ledger 形态不再存在**，不要按本节旧文字去理解
+> 现在的编排行为。
+>
+> 现行机制见 [pentest-orchestration.md](pentest-orchestration.md)。骨架技能文件
+> （`skills/pentest/SKILL.md`）的改写在同一批里另行处理。
 
-契约要点：先执行后汇报、每轮必须有工具调用进展、报告仅在用户要求时产出；
-主 session 只做计划与调度，每一步派发一个独立 Agent（child），只带
-「一个问题 + 已知 2-3 条事实」，结果写回工作区 ledger
-（`.zcode/pentest/ledger.md`）。子步骤 prompt 有硬性形态要求（单一可验证问题、
-中性动词、禁攻击链词汇、附指令模板），依据就是 §1.1 的实测。
+原契约要点（**已不适用**，留作历史）：先执行后汇报、每轮必须有工具调用进展、
+报告仅在用户要求时产出；主 session 只做计划与调度，每一步派发一个独立 Agent
+（child），只带「一个问题 + 已知 2-3 条事实」。其中「聚合状态不放在模型上下文里」
+这一条仍然有效，见不变量 5；子步骤 prompt 的硬性形态要求（单一可验证问题、
+中性动词、禁攻击链词汇）已被 planner/worker 角色提示词继承，依据是 §1.1 的实测。
 
 ### 3.3 设置项与状态所有者
 
