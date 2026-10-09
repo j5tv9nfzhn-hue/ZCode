@@ -15,6 +15,7 @@ import type {
 } from "@/lib/providerSettingsFormTypes.js";
 import type { ModelConnectivityResult } from "@zcode/shared";
 import type { ProviderApiType } from "@zcode/provider";
+import { createVirtualizerElementRef } from "@/lib/virtualizerElementRef.js";
 import {
   TID_MODEL_PROVIDER_ADD_MODEL_BUTTON,
   TID_MODEL_PROVIDER_BASE_URL_INPUT,
@@ -565,6 +566,33 @@ export function ProviderModelsSection({
     overscan: 8,
   });
 
+  // ── 2026-10-09 修复：拉取模型列表后面板空白 ──
+  //
+  // 症状：点「从端点获取模型」→ 对话框弹出、行数与计数显示正常，但列表整片空白；
+  //       手动点一下「全选 / 全不选 / 取消」又立刻恢复正常。
+  //
+  // 根因是三层时序叠加，不是渲染逻辑写错：
+  //   1. `DialogContent` 经 Radix Portal 挂载，而 Portal 是
+  //      `useLayoutEffect(() => setMounted(true))` 的**延迟一帧**挂载
+  //      （@radix-ui/react-portal dist/index.mjs:12-13）。打开对话框那次渲染里，
+  //      滚动容器还不在 DOM 上。
+  //   2. `useVirtualizer` 只在**宿主组件（ProviderModelsSection）渲染**时才读
+  //      `getScrollElement()`（@tanstack/react-virtual dist/esm/index.js:27-32 的
+  //      `_willUpdate` 无依赖数组，但门槛是「宿主渲染」）。而 Portal 挂载只触发
+  //      Portal 子树重渲染，宿主的 `_willUpdate` 不再执行。
+  //   3. 于是 `Virtualizer.scrollElement` 始终为 null、订阅没建立，
+  //      `getVirtualItems()` 恒返回空数组 → 列表空白。
+  //
+  // 为什么点全选/取消能恢复：那三个按钮都调 `setSelectedDiscoveredIds` /
+  // `setDiscoverOpen`，把宿主渲染了一次，`_willUpdate` 这才补上订阅。
+  // 也就是说「恢复」只是碰巧触发了本缺失的那次渲染，按钮本身没有魔力。
+  //
+  // 修法与「为什么必须是回调 ref」见 @/lib/virtualizerElementRef 的文件头注释。
+  const attachDiscoveredListRef = useMemo(
+    () => createVirtualizerElementRef(discoveredListRef, discoveredVirtualizer),
+    [discoveredVirtualizer],
+  );
+
   const handleDiscoverModels = useCallback(async () => {
     if (discovering) return;
     setDiscovering(true);
@@ -722,7 +750,7 @@ export function ProviderModelsSection({
                 </div>
               </div>
               <div
-                ref={discoveredListRef}
+                ref={attachDiscoveredListRef}
                 className="max-h-72 overflow-y-auto rounded-lg border border-input-border bg-input"
               >
                 <div
