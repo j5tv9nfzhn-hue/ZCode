@@ -69,6 +69,10 @@ import { getWorkflowRunToolEntry } from "./get-workflow-run.js";
 import { resumeWorkflowRunToolEntry } from "./resume-workflow-run.js";
 // import { workflowToolEntry } from "./workflow.js";
 import { createToolRuleNameSet } from "../tool-visibility.js";
+import {
+  pentestOrchestrationToolEntries,
+} from "./pentest-orchestration.js";
+import { PENTEST_ORCHESTRATION_TOOL_NAMES } from "@zcode/contracts";
 
 // direct 分支保留 Glob/Grep 工具实现；embedded search 分支由 registerBuiltInTools
 // 统一隐藏 Glob/Grep，并通过 Bash find/grep 接管搜索。
@@ -134,6 +138,9 @@ export const builtInTools: ToolEntry[] = [
   // ——那条禁令的理由是 alwaysAsk 在 child 里无窗可弹，只读查询不适用。
   listModelsToolEntry,
   // workflowToolEntry,
+  // 渗透编排产物工具（record_fact/report_finding/add_intent/...）：
+  // 门控注册，端口不在场即全部下架（见 registerBuiltInTools 的 includePentestOrchestration）。
+  ...pentestOrchestrationToolEntries,
 ];
 
 /**
@@ -181,6 +188,12 @@ interface RegisterBuiltInToolsOptions {
    * appRuntimePreferences，不在这一层。
    */
   includeDynamicWorkflow?: boolean;
+  /**
+   * 渗透编排产物工具门。**只有显式 true 才上架**——这些工具写探索图/资产图，
+   * 只在注入了 PentestOrchestrationPort 的会话有意义（对齐 includeSubmitResult 的端口门控）。
+   * 缺席即下架（fail-closed）。
+   */
+  includePentestOrchestration?: boolean;
   /** node_repl（js）默认关闭，由官方 browser-use 插件启用。 */
   includeNodeRepl?: boolean;
   /** browser-use 说明和 agent.browsers 注入由官方 browser-use 插件 + 宿主 browser bridge 共同启用。 */
@@ -260,6 +273,12 @@ export function registerBuiltInTools(
       continue;
     }
     if (entry.metadata.name === "js" && options.includeNodeRepl !== true) {
+      continue;
+    }
+    if (
+      PENTEST_ORCHESTRATION_TOOL_NAMES.has(entry.metadata.name) &&
+      options.includePentestOrchestration !== true
+    ) {
       continue;
     }
     registry.register(resolveBuiltInToolEntryForBranch(entry, options), {

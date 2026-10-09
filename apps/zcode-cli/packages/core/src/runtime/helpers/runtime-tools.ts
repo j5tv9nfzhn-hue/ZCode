@@ -63,6 +63,8 @@ function registerRuntimeBuiltInTools(runtime: AgentRuntimeInternal, deps: AgentR
       : { submitResultSchema: deps.workflowSubmitSchema }),
     // escalate 与 submit_result 同门同理由：端口在场即注册（不做 opt-in：最可能撞墙的 actor 恰是作者没标记的那个）。
     includeEscalate: Boolean(deps.workflowEscalatePort),
+    // 渗透编排产物工具：端口在场即注册（与 submit_result 同款门控）。
+    includePentestOrchestration: Boolean(deps.pentestOrchestrationPort),
     includeWorkflow: Boolean(deps.workflowPort),
     includeAutomation: Boolean(deps.automationPort) && runtime.config.taskType !== "subagent_child",
     // offPeakPort 只在 host 下发 offPeakToolEnabled 时注入（灰度/远程门在 host 端），
@@ -187,6 +189,7 @@ function createRuntimeToolExecutor(
     coordinatorResponsePort: deps.coordinatorResponsePort,
     workflowSubmitPort: deps.workflowSubmitPort,
     workflowEscalatePort: deps.workflowEscalatePort,
+    pentestOrchestrationPort: deps.pentestOrchestrationPort,
     artifactStore: deps.artifactStore,
     automationPort: deps.automationPort,
     offPeakPort: deps.offPeakPort,

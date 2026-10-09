@@ -17,6 +17,7 @@ export * from "./webfetch.js";
 export * from "./agent.js";
 export * from "./skill.js";
 export * from "./todo.js";
+export * from "./pentest-orchestration.js";
 export * from "./automation.js";
 export * from "./off-peak.js";
 export * from "./target.js";

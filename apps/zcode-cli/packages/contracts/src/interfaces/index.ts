@@ -13,6 +13,7 @@ export * from "./tool-artifact-store.port.js";
 export * from "./subagent.port.js";
 export * from "./workflow.port.js";
 export * from "./workflow-submit.port.js";
+export * from "./pentest-orchestration.port.js";
 export * from "./workflow-escalate.port.js";
 export * from "./dynamic-workflow-run.port.js";
 export * from "./dynamic-workflow-snippet.port.js";

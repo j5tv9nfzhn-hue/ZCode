@@ -86,6 +86,7 @@ import type {
   WorkflowPort,
   WorkflowEscalatePort,
   WorkflowSubmitPort,
+  PentestOrchestrationPort,
   TraceContext,
   TraceId,
   TurnId,
@@ -381,6 +382,8 @@ export interface AgentRuntimeDeps {
   coordinatorResponsePort?: CoordinatorResponsePort;
   /** 工作流 actor 提交终态结果的端口；存在即作为 submit_result 工具的注册门。 */
   workflowSubmitPort?: WorkflowSubmitPort;
+  /** 渗透编排状态端口；存在即作为 9 个编排产物工具的注册门。 */
+  pentestOrchestrationPort?: PentestOrchestrationPort;
   /**
    * mono 子代理的 typed `submit_result`：在场时注册的工具声明是 `{ result: <这份 schema> }` 而非
    * 任意 JSON。只改

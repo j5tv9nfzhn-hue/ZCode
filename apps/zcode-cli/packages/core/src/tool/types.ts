@@ -36,6 +36,7 @@ import type {
   WorkflowPort,
   WorkflowEscalatePort,
   WorkflowSubmitPort,
+  PentestOrchestrationPort,
 } from "@zcode/contracts";
 import type {
   JsonSchema,
@@ -162,6 +163,8 @@ export interface ToolExecutionContext {
   coordinatorResponsePort?: CoordinatorResponsePort;
   /** 工作流 actor 提交终态结果并等待引擎裁决的端口；仅在 workflow actor 会话注入。 */
   workflowSubmitPort?: WorkflowSubmitPort;
+  /** 渗透编排状态端口；仅在开启编排的会话注入。缺席即 9 个编排工具不注册。 */
+  pentestOrchestrationPort?: PentestOrchestrationPort;
   /** 工作流 actor 升级阻塞问题并等待主代理作答的端口；仅在 workflow actor 会话注入。 */
   workflowEscalatePort?: WorkflowEscalatePort;
   artifactStore?: ToolArtifactStorePort;
