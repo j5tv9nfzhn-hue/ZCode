@@ -46,7 +46,9 @@ CTF Console 是本自维护分支在设置页新增的独立分区。它有三�
 | 运行时日志    | 会话事件流，支持按级别与关键字过滤                                                                                     |
 | 投影预览      | 本地纯函数预览：输入目标与指令，看模型会收到的投影结果。**不发起任何请求、不碰会话**，此前叫「公网目标测试」，名不副实 |
 
-编排的机制层细节（数据模型、工具契约、不变量）见
+编排怎么跑、状态放在哪、每一步凭什么这么决定，见
+[pentest-orchestration-mechanism.md](pentest-orchestration-mechanism.md)（机制说明）。
+设计取舍与背景见
 [apps/zcode-cli/docs/pentest-orchestration.md](../apps/zcode-cli/docs/pentest-orchestration.md)。
 
 ## 关键设计约束
