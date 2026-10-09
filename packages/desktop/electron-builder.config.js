@@ -224,6 +224,13 @@ if (
 const PACKAGING_PRUNE_PATTERNS = [
   "!**/*.map",
   "!**/*.pdb",
+  // @types/** 只有 .d.ts 与 package.json，运行时没有任何 require 会解析进去，
+  // 但 protobufjs 把 @types/node 错挂在 dependencies 下（应是 devDependencies），
+  // 于是它跟着 @opentelemetry/otlp-transformer 整条生产闭包进包，白占 2.2MB。
+  // electron-builder 对 node_modules 走的是 getNodeModuleFileMatcher，
+  // 它只收集 config.files 里的 `!` 排除项（fileMatcher.js:177-220），
+  // 默认的 `!**/*.{...,d.ts,...}` 并不作用于该通道，所以 .d.ts 会真的进 asar。
+  "!**/@types/**",
   "!**/__tests__/**",
   "!**/test/**",
   "!**/tests/**",
