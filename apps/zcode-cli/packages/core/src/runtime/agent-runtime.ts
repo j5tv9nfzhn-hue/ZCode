@@ -65,6 +65,8 @@ import type {
   ExecutionShellSelection,
   HookRunner,
   TurnId,
+  PentestOrchestrationPort,
+  PentestGraphOverview,
 } from "./deps.js";
 import { installAgentRuntimeMethods } from "./methods/index.js";
 import type { StartSavedWorkflowRunResult } from "./methods/dynamic-workflow-run-start.js";
@@ -184,6 +186,7 @@ export class AgentRuntime {
   private mcpInitialized = false;
   private mcpToolsRegistered = false;
   private subagentPort?: SubagentPort;
+  private pentestOrchestrationPort?: PentestOrchestrationPort;
   private dynamicWorkflowRunPort?: DynamicWorkflowRunPort;
   private modelCatalogPort?: ModelCatalogPort;
   private runtimeTaskRegistry: RuntimeTaskRegistry;
@@ -306,6 +309,8 @@ export class AgentRuntime {
     this.imageProcessorPort = deps.imageProcessorPort;
     this.pdfDocumentPort = deps.pdfDocumentPort;
     this.subagentPort = deps.subagentPort ?? runtime.createDefaultSubagentPort(deps);
+    // 编排端口提到 runtime 上：工具注册门读 deps 的同一份，编排循环读这里的引用。
+    this.pentestOrchestrationPort = deps.pentestOrchestrationPort;
     this.dynamicWorkflowRunPort = deps.dynamicWorkflowRunPort;
     // GUI「配置」解析子代理模型用的目录（与工具上下文拿的是同一个端口）。
     this.modelCatalogPort = deps.modelCatalogPort;
@@ -373,6 +378,12 @@ export interface AgentRuntime {
   };
   /** 清理投影 diff 缓冲（session 结束或用户手动清空）。 */
   clearNeutralTaskProjectionDiffs(): void;
+  /**
+   * 编排态势快照（CTF Console 的覆盖度面板与图面板的数据源）。
+   * 编排未开启时返回 undefined——调用方据此省略整个字段，而不是构造假快照。
+   * 只读，不构造 SessionEvent，因此漏洞证据不进 transcript。
+   */
+  getPentestOrchestrationOverview(): Promise<PentestGraphOverview | undefined>;
   getMode(): CollaborationMode;
   getPlanEnabled(): boolean;
   grantPermissionFullAccess(interactionId: string, signal?: AbortSignal): Promise<string>;

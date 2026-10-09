@@ -48,6 +48,8 @@ import type {
   MainTurnCacheHitAggregate,
   RuntimeTurnFileChangeMap,
 } from "./types.js";
+// 端口类型经 deps.js 的既有 re-export 取（deps.ts 已从 @zcode/contracts 转出）。
+import type { PentestOrchestrationPort } from "./deps.js";
 import type { RuntimeCommandQueue } from "./command-queue.js";
 import type { RuntimeTaskRegistry } from "../runtime-task/registry.js";
 import type { AgentRuntimeCoreMethods } from "./internal-methods.js";
@@ -104,6 +106,13 @@ export interface AgentRuntimeInternal
   mcpInitialized: boolean;
   mcpToolsRegistered: boolean;
   subagentPort?: SubagentPort;
+  /**
+   * 渗透编排状态端口。此前只存在于 `AgentRuntimeDeps` 里、被工具注册门读取，
+   * runtime 自己拿不到——编排循环（core/runtime/pentest）需要读态势、认领意图，
+   * 所以这里把同一份引用**提到 runtime 上**（与 subagentPort 同款：构造时定型，
+   * 不在运行期重新解析，避免循环与工具面读到不同 store 实例）。
+   */
+  pentestOrchestrationPort?: PentestOrchestrationPort;
   dynamicWorkflowRunPort?: DynamicWorkflowRunPort;
   modelCatalogPort?: ModelCatalogPort;
   runtimeTaskRegistry: RuntimeTaskRegistry;

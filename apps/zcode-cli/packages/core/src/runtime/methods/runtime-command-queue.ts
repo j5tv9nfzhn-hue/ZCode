@@ -11,6 +11,7 @@ import { runControlOnlyTurnCommand } from "./control-only-turn.js";
 import { createTurnCancelledError } from "../helpers/index.js";
 import { executeTargetContinuationCommand } from "./target.js";
 import { runActiveTargetContinuationLoop } from "./target-continuation-loop.js";
+import { runPostPromptPentestOrchestration } from "../pentest/orchestration-loop.js";
 import { isStaleBranchRuntimeCommand } from "./runtime-command-generation.js";
 import type {
   AcquireForegroundPromotionLeaseResult,
@@ -216,6 +217,14 @@ async function runRuntimeCommand(
           command,
           foregroundExecution.controller.signal,
         );
+        // 渗透编排循环紧跟其后就地驱动：同一 runtime、同一 traceId、同一 abortSignal，
+        // 不引入独立后台定时器（见 pentest/orchestration-loop.ts 文件头）。
+        // 缺席时立即返回，普通会话不受影响。
+        await runPostPromptPentestOrchestration.call(this, {
+          taskStatement: command.input,
+          abortSignal: foregroundExecution.controller.signal,
+          traceContext: command.traceContext,
+        });
         command.resolve(continuationResult ?? result);
       } finally {
         this.runtimeCommandQueue.clearCancelPending(command.id);
