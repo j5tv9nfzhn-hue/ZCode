@@ -22,10 +22,8 @@ import {
   createNodeReplBrowserBroker,
   type NodeReplBrowserBroker,
 } from "./app/node-repl-browser-broker.js";
-import {
-  openProtocolStartupStorage,
-  prepareProtocolStartupStorage,
-} from "./zcode-protocol/storage-startup.js";
+import { openProtocolStartupStorage } from "./zcode-protocol/storage-startup.js";
+import { runProtocolStoragePreparation } from "./storage-prep.js";
 import { closeSessionStore, getSessionDbPath } from "./app/session-store.js";
 import { startProcessProviderRegistryRuntime } from "./app/process-provider-registry-runtime.js";
 import { scheduleStartupLogRetentionCleanup } from "./log-retention.js";
@@ -83,9 +81,9 @@ export async function runZCodeProtocolAgent(
   options: RunZCodeProtocolAgentOptions = {},
 ): Promise<void> {
   if (options.prepareStorageOnly) {
-    const config = createConfig({ env: options.env });
-    await prepareProtocolStartupStorage({
-      dbPath: getSessionDbPath(config, options.cwd),
+    await runProtocolStoragePreparation({
+      cwd: options.cwd,
+      env: options.env,
       input: options.input ?? process.stdin,
       output: options.output ?? process.stdout,
     });

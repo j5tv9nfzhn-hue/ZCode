@@ -267,6 +267,41 @@ export const buildCli = async ({
   }
 
   await chmod(outfile, executableFileMode);
+
+  // --prepare-storage 的独立入口。
+  // Host 每次冷启动都为每个预热工作区 fork 一个 Worker 跑存储准备（最多 3 个），
+  // 过去这些 Worker 的入口是完整的 zcode.cjs，为了开 SQLite + 跑迁移要连带解析
+  // core / provider / MCP / ai-sdk 整包。这份产物只含 storage-prep 的依赖闭包，
+  // 体积差约 6 倍；主 bundle 的 --prepare-storage 能力保持不变，二者并存。
+  // 不加 banner：--licenses 快捷分支只对面向人的 CLI 有意义，这里用不到。
+  const storagePrepOutfile = resolve(cliDirectory, "dist/zcode.storage-prep.cjs");
+  await build({
+    bundle: true,
+    define: {
+      __CLI_VERSION__: JSON.stringify(cliVersion),
+    },
+    entryPoints: [resolve(cliDirectory, "src/storage-prep-main.ts")],
+    external: resolveBuildExternal(),
+    format: "cjs",
+    keepNames: minify,
+    legalComments: "none",
+    logLevel: "info",
+    minify,
+    // createZodDedupePlugin 依赖 metafile 校验 bundle 里只有一份 Zod v4，缺了会直接报错。
+    metafile: true,
+    plugins: [createZodDedupePlugin({ expectedV4Version: await readZodBuildVersion() })],
+    outfile: storagePrepOutfile,
+    platform: "node",
+    sourcemap,
+    target: "node22",
+    alias: resolveBuildAliases({ cliDirectory, rootDirectory }),
+  });
+
+  if (!sourcemap) {
+    await rm(`${storagePrepOutfile}.map`, { force: true });
+  }
+
+  await chmod(storagePrepOutfile, executableFileMode);
   await stageThirdPartyNotices(resolve(cliDirectory, "dist"), resolve(rootDirectory, "../.."));
 };
 

@@ -13,6 +13,10 @@
     "./v4-replay": {
       "types": "./dist/zcode-protocol-v4/replay.d.ts",
       "import": "./dist/zcode-protocol-v4/replay.js"
+    },
+    "./storage-prep": {
+      "types": "./dist/storage-prep.d.ts",
+      "import": "./dist/storage-prep.js"
     }
   },
   "scripts": {

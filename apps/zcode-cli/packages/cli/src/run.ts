@@ -1,12 +1,8 @@
 import { createNodeLoggerFactory } from "@zcode/adapters";
 import type { PresentationSurface } from "@zcode/core";
 import type { RunContext } from "@zcode/shared-types";
-import {
-  applyCliRuntimeEnvSanitization,
-  loadCliDotenv,
-  prepareCliRuntimeEnv,
-  shouldLoadCliDotenvForProtocolServer,
-} from "./env.js";
+import { prepareCliRuntimeEnv } from "./env.js";
+import { prepareProtocolEnv, withSanitizingDotenv } from "./protocol-env.js";
 import { runHooksCommand } from "./hooks-trust-command.js";
 import { loadBootstrapModule } from "./bootstrap-loader.js";
 import { runEmbeddedSearchCli } from "./internal-search/embedded-search-cli.js";
@@ -60,27 +56,7 @@ const runZCodeProtocolCommand = async (
   prepareStorageOnly: boolean,
 ): Promise<number> => {
   try {
-    const env = prepareCliRuntimeEnv(deps.env ?? process.env);
-    const workingDirectory = (deps.cwd ?? process.cwd)();
-    // 打包态 app-server 是 desktop host 的内部协议子进程。
-    // 如果这里继续从 workspace 向上读取用户 .env，读文件失败或环境污染会在协议建立前
-    // 直接退出，外层只能看到 ZCode agent transport closed。
-    const dotenvResult = shouldLoadCliDotenvForProtocolServer(env)
-      ? (deps.loadDotenv ?? loadCliDotenv)({
-          cwd: workingDirectory,
-          env,
-        })
-      : {
-          keys: [],
-          loaded: false,
-        };
-    applyCliRuntimeEnvSanitization(env);
-
-    if (dotenvResult.error) {
-      throw new Error(`Failed to load environment file: ${dotenvResult.path}`, {
-        cause: dotenvResult.error,
-      });
-    }
+    const { env, workingDirectory } = prepareProtocolEnv(deps);
 
     const runProtocolAgent =
       deps.runZCodeProtocolAgent ?? (await loadBootstrapModule()).runZCodeProtocolAgent;
@@ -187,11 +163,7 @@ export const run = async (ctx: RunContext, deps: RunDependencies = {}): Promise<
       createNodeLoggerFactory({ env: deps.env ?? process.env }).createLogger("zcode").child({
         module: "cli",
       }),
-    loadDotenv: (dotenvOptions = {}) => {
-      const dotenvResult = (deps.loadDotenv ?? loadCliDotenv)(dotenvOptions);
-      applyCliRuntimeEnvSanitization(dotenvOptions.env ?? process.env);
-      return dotenvResult;
-    },
+    loadDotenv: withSanitizingDotenv(deps),
   };
 
   return await runZCodeProtocolCommand(

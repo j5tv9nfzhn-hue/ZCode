@@ -440,10 +440,24 @@ function resolveElectronRuntimeZCodeAgentCommand(
   if (!bundlePath) {
     return null;
   }
+  // 打包链默认已 stage 字节码入口（scripts/prepare-desktop-agent-bytecode.mjs），
+  // 命中即可省掉每次冷启动对 29.5MB bundle 的全量解析。
+  // 这里与 dev 分支（resolveBundledWorkspaceZCodeAgentCommand）刻意相反：
+  // dev 是显式试验、入口缺失直接抛错；出厂包必须「有就用、没有就退回 JS」，
+  // 性能优化不允许成为起不来的原因。ZCODE_DESKTOP_AGENT_BYTECODE=0 是唯一强制回退开关。
+  const bundleDirectory = dirname(bundlePath);
+  const bytecodeEntry = join(bundleDirectory, "zcode.bytecode.cjs");
+  const useBytecode = process.env.ZCODE_DESKTOP_AGENT_BYTECODE !== "0" && existsSync(bytecodeEntry);
+  // 存储准备优先走独立的小入口：它只含 storage-prep 的依赖闭包，体积约为整包的 1/6，
+  // 而 Host 每次冷启动都要为每个预热工作区 fork 一个这样的 Worker（最多 3 个）。
+  // 这里固定走 JS——它跑在 Web Worker 里而不是 ELECTRON_RUN_AS_NODE 子进程，
+  // 两者 V8 snapshot 不同，cachedData 可能被拒；入口缺失时回退整包，最坏等于现状。
+  const storagePrepEntry = join(bundleDirectory, "zcode.storage-prep.cjs");
+  const storagePreparationEntry = existsSync(storagePrepEntry) ? storagePrepEntry : bundlePath;
   return {
     command: process.execPath,
-    args: [bundlePath, ...ZCODE_AGENT_RUNTIME.spawnArgs],
-    storagePreparationEntry: bundlePath,
+    args: [useBytecode ? bytecodeEntry : bundlePath, ...ZCODE_AGENT_RUNTIME.spawnArgs],
+    storagePreparationEntry,
     cwd: context.workspacePath,
     // 关键：必须以纯 Node 模式启动，否则子进程会被当成 Electron/Chromium 子进程卡在 GPU 初始化。
     env: { ELECTRON_RUN_AS_NODE: "1" },
