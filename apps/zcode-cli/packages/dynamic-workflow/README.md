@@ -71,39 +71,11 @@ scripts/
   generate-libs.mjs   embeds the TS stdlib closure into src/compiler/libs.generated.ts
   generate-mermaid.mjs renders every graph fixture to charts/<name>.md (`pnpm charts`)
 charts/               generated mermaid pages (one per graph fixture) — gitignored
-tests/
-  workflows/          fixture workflow scripts for the compiler suite (see below)
-  graphs/             fixture scripts for the site-graph suite; expected/*.txt are
-                      the serialized-graph snapshots
-  helpers/markers.ts  `// error` marker parsing + strict diff
-  *.test.ts           fixture runners + API-shape/unit tests
 ```
 
-## Fixture tests (`tests/workflows/`)
-
-Every `tests/workflows/*.ts` file is compiled by the fixture suite. Expectations
-live in the fixture itself, Dotty-neg-test style:
-
-- A trailing `// error` marker expects one diagnostic on that line; repeat the
-  marker for multiple (`// error // error` = two).
-- Matching is strict and bidirectional: every marker must be hit, and every
-  emitted diagnostic must be covered by a marker (line-level).
-- A file with no markers must compile clean.
-
-To add a compiler test, drop a new fixture file in the directory — no test code
-changes needed. Fixtures are excluded from oxlint (many are intentionally
-invalid) and from tsc (tsconfig covers `src/` only); the fixture suite is their
-only checker.
-
-## Site-graph tests (`tests/graphs/`)
-
-Every `tests/graphs/*.ts` file must typecheck clean; the suite serializes its site
-graph and snapshots it under `tests/graphs/expected/<name>.txt` (via vitest's async
-`toMatchFileSnapshot`), plus the derived actor-graph projection as
-`<name>.actor.txt`. A representative subset also snapshots the mermaid renderings as
-`<name>.site.mmd` / `<name>.actor.mmd`. Regenerate with `pnpm test -- -u`, then
-review the diffs by hand — the snapshots are the human-readable contract for the
-analyzer. These fixtures are excluded from oxlint like `tests/workflows/`.
+<!-- 2026-10-09：本文件原先描述的 tests/{workflows,graphs,helpers} fixture 套件与
+     vitest 已随上游删除——tests/ 目录不存在、package.json 无 vitest 依赖也无 test
+     script。下游若重新引入测试套件，再把对应小节加回来。 -->
 
 ## Develop
 
@@ -111,12 +83,10 @@ All commands from this directory (or with `--filter @zcode/dynamic-workflow` fro
 either workspace root):
 
 ```sh
-pnpm test         # vitest run tests
-pnpm test -- -w   # watch mode while developing
 pnpm typecheck    # tsc --noEmit
 pnpm build        # tsc -> dist/ (declaration + maps)
 pnpm charts       # build + render graph fixtures to charts/*.md (mermaid)
-pnpm lint         # oxlint src tests
+pnpm lint         # oxlint src
 ```
 
 There is no dev server and no process to run: the package is a pure function

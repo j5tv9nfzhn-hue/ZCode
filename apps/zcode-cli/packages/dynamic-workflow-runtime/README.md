@@ -45,9 +45,12 @@ world-read）/ `event`（log）/ `complete`；parent→child：`response`。
 
 ## 构建顺序
 
-测试与 typecheck 通过 `@zcode/dynamic-workflow` 的**已构建 dist** 解析依赖，故 `pretest` /
-`pretypecheck` 会先 `pnpm --filter @zcode/dynamic-workflow build`。全新检出直接 `pnpm test` 即可，
+typecheck 通过 `@zcode/dynamic-workflow` 的**已构建 dist** 解析依赖，故 `pretypecheck`
+会先 `pnpm --filter @zcode/dynamic-workflow build`。全新检出直接 `pnpm typecheck` 即可，
 不会踩到 stale-dist。
+
+<!-- 2026-10-09：本节原先还提到 `pretest` 与「直接 pnpm test」。本包没有 test 脚本，
+     上游的 vitest 套件已删除，只保留 pretypecheck。 -->
 
 ## 失败裁决与取舍
 
