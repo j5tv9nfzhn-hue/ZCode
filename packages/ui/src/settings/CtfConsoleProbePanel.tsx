@@ -66,7 +66,7 @@ export function CtfConsoleProbePanel({
           data-testid="ctf-console-probe-ack"
           onCheckedChange={(checked) => setAcknowledged(checked === true)}
         />
-        <span className="text-ui-caption text-foreground-muted">
+        <span className="text-ui-caption text-foreground-subtle">
           {intl.formatMessage({ id: "settings.ctfConsole.probe.disclaimer" })}
         </span>
       </label>
@@ -132,7 +132,7 @@ export function CtfConsoleProbePanel({
           </pre>
           {projectionInfo.scopeMatched ? (
             <p
-              className="text-ui-caption text-foreground-muted"
+              className="text-ui-caption text-foreground-subtle"
               data-testid="ctf-console-probe-scope"
             >
               {intl.formatMessage({ id: "settings.ctfConsole.probe.scopeMatched" })}

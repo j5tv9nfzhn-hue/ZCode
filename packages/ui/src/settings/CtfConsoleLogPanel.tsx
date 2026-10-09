@@ -16,7 +16,7 @@ export interface CtfConsoleLogEntry {
 const LEVEL_TONE: Record<CtfConsoleLogLevel, string> = {
   config: "text-foreground-subtle",
   model: "text-primary",
-  session: "text-foreground-muted",
+  session: "text-foreground-subtlest",
   tool: "text-accent",
 };
 
