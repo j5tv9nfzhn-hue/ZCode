@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, type ComponentProps } from "react";
 import {
-  DEFAULT_AGENT_BROWSER_VIEWPORT,
   DEFAULT_EMBEDDED_BROWSER_VIEWPORT_PREFERENCE,
   type EmbeddedBrowserViewportPreference,
 } from "@zcode/shared";
@@ -36,15 +35,18 @@ export function HumanBrowserView(props: HumanBrowserViewProps): React.JSX.Elemen
   updateRef.current = update;
 
   if (!loading && !initialPreferenceRef.current) {
+    // agent 打开的 tab 与人工路径收敛到同一条默认偏好。
+    //
+    // 曾经这里对 agentOpened 硬编码 { mode: "responsive", viewport: 1280×720 }，
+    // 于是 agent 一旦开过 tab，普通浏览也变成居中的设备模拟画布 —— 这与
+    // browser-use-plugin/docs/viewport.md:3「普通浏览保持 normal IAB viewport」相反。
+    //
+    // 现在 agent 想用特定尺寸必须显式调 browserViewUpdateViewport
+    // （useResponsiveBrowserViewportControl 收到非 null viewport 才 applyResponsiveMode）。
+    // 不显式请求就是 normal，与人类用户一致。
+    // 设计与验收见 packages/desktop/docs/embedded-browser-viewport.md。
     initialPreferenceRef.current = clonePreference(
-      agentOpened
-        ? {
-            mode: "responsive",
-            viewport: { ...DEFAULT_AGENT_BROWSER_VIEWPORT },
-            zoom: "fit",
-          }
-        : (settings?.embeddedBrowserViewportPreference ??
-            DEFAULT_EMBEDDED_BROWSER_VIEWPORT_PREFERENCE),
+      settings?.embeddedBrowserViewportPreference ?? DEFAULT_EMBEDDED_BROWSER_VIEWPORT_PREFERENCE,
     );
   }
 

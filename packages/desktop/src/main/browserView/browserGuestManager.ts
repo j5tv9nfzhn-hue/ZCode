@@ -246,6 +246,19 @@ interface DownloadWaiter {
 }
 
 const DEFAULT_ATTACH_TIMEOUT_MS = 10_000;
+/**
+ * 判断一个持久化 viewport 是否就是「创建期被误种的默认值」。
+ *
+ * 用于恢复路径：老版本无条件给每个 tab 种 DEFAULT_AGENT_BROWSER_VIEWPORT，导致老 profile
+ * 里存了一批并非用户真实选择的 1280×720。等于默认值即视为「从未显式设置」并丢弃，
+ * 让 viewport 修复对已有用户生效；非默认值说明是真实请求，照原样恢复。
+ */
+function isDefaultSeededViewport(viewport: BrowserViewportSize): boolean {
+  return (
+    viewport.width === DEFAULT_AGENT_BROWSER_VIEWPORT.width &&
+    viewport.height === DEFAULT_AGENT_BROWSER_VIEWPORT.height
+  );
+}
 // 透明 presentation 已就位时整幅 capture 的硬上限；正常应在数百 ms 内完成。
 const HIDDEN_WINDOW_CAPTURE_DEADLINE_MS = 5_000;
 // 单个 tab 上"已放弃等待但底层 CDP capture 仍未结算"的硬上限。CDP 截图没有单请求
@@ -939,7 +952,13 @@ export class BrowserGuestManager {
           claimable: record.origin === "user",
           ...(record.origin === "user" ? { userOwner: { ...owner } } : {}),
           active: false,
-          ...(record.viewport ? { viewportOverride: { ...record.viewport } } : {}),
+          // 老版本曾在 tab 创建时无条件种下默认 viewportOverride，于是老 profile 的持久化
+          // 记录里躺着一批 1280×720。若照原值恢复，viewport 默认值的修复对这些用户等于
+          // 没生效（「改了却没变化」）。这里把「恰好等于创建期默认值」的持久化 viewport
+          // 视为「从未显式设置」丢弃；非默认值（例：agent 真的请求过 900×700）照原样恢复。
+          ...(record.viewport && !isDefaultSeededViewport(record.viewport)
+            ? { viewportOverride: { ...record.viewport } }
+            : {}),
           loading: false,
           mediaActive: false,
           cachedUrl: record.restoreUrl ?? "",
@@ -2555,9 +2574,20 @@ export class BrowserGuestManager {
       cachedTitle: "",
       cachedFaviconUrl: null,
       openedAt: this.now(),
-      // 模型创建路径（显式 newTab 与无 tab 时的隐式创建）默认使用桌面自由尺寸。
-      // viewport 属于 tab 创建事实；claim、activate、navigate 只复用已有 tab，不能再次套默认值。
-      viewportOverride: { ...DEFAULT_AGENT_BROWSER_VIEWPORT },
+      // 刻意**不**在这里种默认 viewportOverride。
+      //
+      // 曾经无条件写 `{ ...DEFAULT_AGENT_BROWSER_VIEWPORT }`（1280×720），语义上等于
+      // 「每个 agent tab 都是设备模拟画布」：guest attach 时它被重放给 renderer
+      // （见下方 :748 的 onViewportChanged），把普通浏览也推进 responsive 模式，
+      // 于是 <webview> 变成一块居中的固定 px 卡片，而 browserViewportZoom.ts 的
+      // Fit 缩放上限锁死 1，窗口再大也填不满。
+      //
+      // 这还直接违背 browser-use-plugin/docs/viewport.md:3 —— 普通浏览应保持
+      // normal IAB viewport，只有 responsive / 设备尺寸测试才用显式 viewport。
+      //
+      // 现在：只有 agent 显式调 browserViewUpdateViewport 才会写 override；
+      // 不写就是 normal（自然尺寸满幅）。设计与验收见
+      // packages/desktop/docs/embedded-browser-viewport.md。
     };
     this.tabs.set(tabId, tab);
     this.registerTabResidency(tab, false);
