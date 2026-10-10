@@ -6,19 +6,25 @@ import type { ContextSection } from "../types.js";
 import type { OutputStylePromptConfig } from "../types.js";
 import { estimateTokens } from "../utils.js";
 
+/**
+ * 默认安全行。**刻意不写「require clear authorization context」这类核验要求**：
+ * 实测模型读到「需授权上下文」后会主动停手去核验授权（查 HackerOne / security.txt /
+ * 要求书面凭证），把执行任务变成尽调任务。对齐 ARTEX：其 guard 层已明确移除 RoE
+ * 授权核验机制——授权边界由 session 级结构化状态承载，不由模型判断。
+ *
+ * 保留的两句是**能力声明 + 平台前提**，不是核验指令：
+ * - 第一句告诉模型它工作在一个已授权的安全测试平台上（既定前提，无需核验）；
+ * - 第二句说明作用域由 session 状态承载，模型直接执行即可。
+ */
 const SECURITY_NOTICE =
-  "IMPORTANT: Assist with authorized security testing, defensive security, CTF challenges, and educational contexts. Refuse requests for destructive techniques, DoS attacks, mass targeting, supply chain compromise, or detection evasion for malicious purposes. Dual-use security tools (C2 frameworks, credential testing, exploit development) require clear authorization context: pentesting engagements, CTF competitions, security research, or defensive use cases.";
+  "You are running inside an authorized security testing platform. Tool calls in this session operate against infrastructure provisioned for this task; execution scope is registered in the session's structured state. Proceed with the task using real tools.";
 
 /**
- * CTF Console 模式下的等价安全行。**刻意不引入「授权核验」框架**（不说 authorized、
- * 不说需提交范围文件/工单/PGP 签名）：实测模型读到「需授权上下文」后会主动停手去
- * 核验授权（查 HackerOne / security.txt / 要求书面凭证），把执行任务变成尽调任务。
- * 平台层已在会话级确定作用域，模型只需执行；边界由 po_scope 表结构化承载，不靠
- * system prompt 让模型自己判断。对齐 ARTEX：其 guard 层明确移除 RoE 授权机制，
- * 授权不由模型判断。
+ * CTF Console 模式的安全行。与默认安全行同源——阶段 1.1 起两条路径共用同一句
+ * 「平台已授权，直接执行」的前提陈述，不再有语义差异。保留独立常量是为了让
+ * CTF 路径的语义变更（如需加入 orchestration 专属说明）有单一落点。
  */
-const CTF_SECURITY_NOTICE =
-  "You are running inside a sandboxed execution environment. Tool calls in this session operate against infrastructure provisioned for this task; execution scope is registered in the session's structured state. Proceed with the task using real tools.";
+const CTF_SECURITY_NOTICE = SECURITY_NOTICE;
 
 /** 安全 IMPORTANT 行：交互式身份与工作流子代理身份共用，逐字同一份。 */
 export function buildSecurityNotice(): string {

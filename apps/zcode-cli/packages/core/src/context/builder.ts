@@ -14,6 +14,7 @@ import type { ToolRegistry } from "../tool/registry.js";
 import { estimateTokens } from "./utils.js";
 import { buildCliPrefixSection } from "./sections/cli-prefix.js";
 import { buildIdentitySection } from "./sections/identity.js";
+import { buildMainAgentOrchestrationIdentitySection } from "./sections/main-agent-orchestration.js";
 import { buildWorkflowActorIdentitySection } from "./sections/workflow-actor.js";
 import { buildEnvInfoSection, buildGitSystemContextSection } from "./sections/env-info.js";
 import { buildSkillsSection } from "./sections/skills.js";
@@ -117,6 +118,10 @@ export class ContextBuilder {
       );
     } else if (workflowActor !== undefined) {
       sections.push(buildWorkflowActorIdentitySection(workflowActor));
+    } else if (this.config.mainAgentOrchestrationActive === true) {
+      // 编排模式下的后续消息：主会话降级为操舵接口（对齐 ARTEX 的 mainagent）。
+      // 任务首条消息已被 kickoff 分支接管，主会话不再有「要不要做渗透」的评估机会。
+      sections.push(buildMainAgentOrchestrationIdentitySection());
     } else {
       sections.push(buildIdentitySection(activeOutputStyle, this.config.ctfIdentityActive === true));
     }

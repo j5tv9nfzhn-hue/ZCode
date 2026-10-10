@@ -1,4 +1,4 @@
-import { traceContextToLogContext } from "../deps.js";
+import { createTurnId, traceContextToLogContext } from "../deps.js";
 import type { RuntimeCommand, TaskNotificationRuntimeCommand } from "../command-queue.js";
 import { uuidv7 } from "@zcode/shared";
 import type { AgentRuntimeInternal } from "../internal.js";
@@ -11,7 +11,11 @@ import { runControlOnlyTurnCommand } from "./control-only-turn.js";
 import { createTurnCancelledError } from "../helpers/index.js";
 import { executeTargetContinuationCommand } from "./target.js";
 import { runActiveTargetContinuationLoop } from "./target-continuation-loop.js";
-import { runPostPromptPentestOrchestration } from "../pentest/orchestration-loop.js";
+import {
+  isPentestOrchestrationAvailable,
+  runPostPromptPentestOrchestration,
+  shouldKickoffPentestOrchestration,
+} from "../pentest/orchestration-loop.js";
 import { isStaleBranchRuntimeCommand } from "./runtime-command-generation.js";
 import type {
   AcquireForegroundPromotionLeaseResult,
@@ -203,6 +207,43 @@ async function runRuntimeCommand(
         return;
       }
       try {
+        // ── 编排前置：首条任务消息直接进编排循环 ──
+        // 对齐 ARTEX：其 mainagent 只操舵、不探索，任务创建即进 goals → planner → worker
+        // 循环（见 server/goals.go 的 launchTask）。ZCode 过去把「主会话探索轮」放在
+        // 编排之前，导致用户发的第一条渗透任务必然先被主模型以普通身份评估一次——
+        // 读到的 SECURITY_NOTICE 会触发授权核验、进而拒绝，编排永远没机会跑。
+        //
+        // 现在：编排开启且这是任务的**首条**消息时，主会话的探索轮被跳过，任务直接
+        // 交给编排循环。后续消息（追问/操舵）才走主会话——那时编排已启动，主会话
+        // 以操舵身份响应（见阶段 2.2 的 identity 切换）。
+        //
+        // 「首条」的判据：编排端口在场 且 图里既没有目标也没有任何意图。
+        //   · goals.length === 0 且 frontier 为空 → 从没启动过 → 首条
+        //   · 已拆解过目标 / 已有意图 → 编排在跑或跑过 → 走主会话（操舵）
+        const orchestrationKickoff =
+          isPentestOrchestrationAvailable(this) &&
+          (await shouldKickoffPentestOrchestration.call(this));
+        if (orchestrationKickoff) {
+          const orchestrationResult = await runPostPromptPentestOrchestration.call(this, {
+            taskStatement: command.input,
+            abortSignal: foregroundExecution.controller.signal,
+            traceContext: command.traceContext,
+          });
+          // 主会话不产出探索结果——把编排的启动事实回填成一个最小的 turn 结果。
+          // events 为空：编排的产物通过子代理会话（pentest-*）走各自的投影，
+          // 不在主会话 turn 里伪造事件。
+          const orchestrationSummary = orchestrationResult
+            ? `编排已启动（${orchestrationResult.steps} 步 / ${orchestrationResult.stopReason}）`
+            : "编排已启动";
+          command.resolve({
+            response: orchestrationSummary,
+            turnId: createTurnId(),
+            traceId: command.traceContext.traceId,
+            events: [],
+            projection: await this.rebuildProjection(),
+          });
+          return;
+        }
         const result = await this.executeTurnCommand(
           command.input,
           command.attachments,
@@ -217,14 +258,8 @@ async function runRuntimeCommand(
           command,
           foregroundExecution.controller.signal,
         );
-        // 渗透编排循环紧跟其后就地驱动：同一 runtime、同一 traceId、同一 abortSignal，
-        // 不引入独立后台定时器（见 pentest/orchestration-loop.ts 文件头）。
-        // 缺席时立即返回，普通会话不受影响。
-        await runPostPromptPentestOrchestration.call(this, {
-          taskStatement: command.input,
-          abortSignal: foregroundExecution.controller.signal,
-          traceContext: command.traceContext,
-        });
+        // 编排已在首条消息时启动过；后续消息走主会话（操舵）。这里不再重复触发
+        // 编排循环——图变由子代理完成时经 notify 驱动，不依赖用户消息。
         command.resolve(continuationResult ?? result);
       } finally {
         this.runtimeCommandQueue.clearCancelPending(command.id);

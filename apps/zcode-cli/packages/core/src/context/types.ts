@@ -40,6 +40,7 @@ export type ContextSource =
   | "current_date" // 当前日期
   | "custom_system_prompt" // 自定义 stable system body
   | "workflow_actor_identity" // 动态工作流子代理身份：契约 + persona 叠加
+  | "main_agent_orchestration_identity" // 编排模式下主会话的操舵身份
   | "subagent_agent_prompt" // 子 agent 专属身份/任务 prompt
   | "subagent_notes" // 子 agent 通用操作提醒
   | "subagent_environment" // 子 agent 环境和模型上下文
@@ -121,6 +122,14 @@ export interface ContextBuilderConfig {
    * 与 customSystemPrompt 互斥（后者整段替换，本标志位在默认身份路径上生效）。
    */
   ctfIdentityActive?: boolean;
+  /**
+   * 编排模式下主会话的「操舵身份」。置真时身份块整段换成操舵声明（只观察 + 操舵，
+   * 不亲自探索、不自主生成意图），对齐 ARTEX 的 mainagent。
+   *
+   * 触发条件：任务已进编排循环（首条消息被 kickoff 分支接管）、这是**后续**消息。
+   * 与 ctfIdentityActive 同源但语义不同——后者只改安全行，前者改整个身份定位。
+   */
+  mainAgentOrchestrationActive?: boolean;
   /**
    * 动态工作流子代理（workflow child）的身份输入。在场即走 builder 的第三条路径：
    * 基座段（CLI prefix、安全行、Harness、memory）+ 工作流子代理契约 + persona 叠加，

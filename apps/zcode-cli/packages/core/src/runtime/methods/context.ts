@@ -137,6 +137,10 @@ export function createContextBuilderFromSnapshot(
     // CTF Console 身份行：编排开关同时驱动身份块走无授权核验版本。
     // customSystemPrompt 非空时 builder 走整段替换路径，本字段不生效（互斥）。
     ctfIdentityActive: this.config.pentestOrchestrationEnabled === true,
+    // 编排模式下主会话降级为操舵接口：任务首条消息已被 kickoff 分支接管，
+    // 后续消息走操舵身份（只观察 + 操舵，不亲自探索、不评估是否可做渗透）。
+    // 与 ctfIdentityActive 同源：都只在编排开启时生效，但改的是整个身份定位。
+    mainAgentOrchestrationActive: this.config.pentestOrchestrationEnabled === true,
     workflowActor: this.config.workflowActor,
     language: this.config.language,
     outputStyle: this.config.outputStyle,
