@@ -25,7 +25,23 @@ export interface AgentProfile {
   disallowedTools?: readonly string[];
   injectAgentsMd?: boolean;
   maxTurns?: number;
+  /**
+   * 必需借用的父 MCP server 名。父未连接时子代理**启动即失败**
+   * （ConfigurationError）——用于「没有它这个 agent 就没意义」的强依赖。
+   */
   mcpServers?: readonly string[];
+  /**
+   * 可选借用的父 MCP server 名。父未连接时**静默跳过**，不影响子代理启动。
+   *
+   * 与 mcpServers 的区别只有必需性：
+   *   · mcpServers         —— 未连接 → ConfigurationError（强依赖）
+   *   · optionalMcpServers —— 未连接 → 借用空集，照常运行（弱依赖）
+   *
+   * 用例：编排 worker 要能使用内置浏览器（node_repl MCP），但浏览器能力只在
+   * 用户启用官方 browser-use 插件时才存在。声明为必需会让未启用插件的用户
+   * 每次编排都启动失败；声明为可选则「有就用、没有就退化」，语义正确。
+   */
+  optionalMcpServers?: readonly string[];
   memory?: AgentMemoryScope;
   modelSelection?: ModelSelection;
   name: string;

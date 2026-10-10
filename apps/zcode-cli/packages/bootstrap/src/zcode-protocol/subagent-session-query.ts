@@ -21,7 +21,14 @@ interface SubagentCandidate {
   childSessionId: string;
   runInBackground: boolean;
   output: Record<string, unknown> | null;
-  part: ToolPart;
+  /**
+   * 派生该候选的 Agent 工具调用 part。
+   *
+   * **可选**——编排子代理（goals/planner/worker）经 subagentPort.launch() 直接派发，
+   * 不产生 Agent 工具调用；它们只能从 parent events（SubagentSpawned/Stopped）恢复。
+   * 见 collectCandidates 的两条来源。
+   */
+  part?: ToolPart;
   subagentType: string;
   summary?: string;
   startedAt?: number;
@@ -219,12 +226,41 @@ function collectCandidates(
 ): SubagentCandidate[] {
   const candidates = new Map<string, SubagentCandidate>();
   const relations = subagentEventRelations(parentEvents);
+  // 来源 1：Agent 工具调用 part（含后台 Agent 的 launch ACK 恢复）。
   for (const message of activeBranchMessages(session, messages)) {
     for (const part of message.parts) {
       if (part.type !== "tool") continue;
       const candidate = candidateFromToolPart(part, relations.get(part.callID));
       if (candidate) candidates.set(candidate.childSessionId, candidate);
     }
+  }
+  // 来源 2：parent events 里的 SubagentSpawned（**必须独立于工具行**）。
+  //
+  // 编排子代理（goals/planner/worker）经 subagentPort.launch() 直接派发，不产生
+  // Agent 工具调用 part——只靠来源 1 时它们永远不会被收集到，于是 seed.childSessionIds
+  // 不含它们，seedSubagents 把对应 UI 行全判为幽灵 child 并清除。
+  // 用户可见症状：编排子代理「中途消失」（任何一次 hydration/刷新/重连都触发）。
+  //
+  // SubagentSpawned 已经由 runner 经 emitParentEvent 落进 parent eventStore，
+  // 因此这里能拿到 childSessionId + agentType + parentToolCallId；关系里已有的
+  // agentId/subagentType/title 来自事件 payload 本身。
+  for (const [parentToolCallId, relation] of relations) {
+    const childSessionId = relation.childSessionId;
+    if (!childSessionId || candidates.has(childSessionId)) continue;
+    candidates.set(childSessionId, {
+      childSessionId,
+      runInBackground: false,
+      output: null,
+      subagentType: relation.subagentType ?? "subagent",
+      title: relation.description ?? "Subagent",
+      ...(relation.agentId ? { agentId: relation.agentId } : {}),
+      ...(relation.startedAt !== undefined ? { startedAt: relation.startedAt } : {}),
+      ...(relation.stoppedAt !== undefined ? { stoppedAt: relation.stoppedAt } : {}),
+      ...(relation.stoppedStatus ? { stoppedStatus: relation.stoppedStatus } : {}),
+      ...(relation.summary ? { summary: relation.summary } : {}),
+      // parentToolCallId 只用于日志/诊断；候选身份是 childSessionId。
+      ...(parentToolCallId ? {} : {}),
+    });
   }
   return [...candidates.values()];
 }
@@ -284,7 +320,7 @@ function findBackgroundTask(
     (task) =>
       task.taskKind === "subagent" &&
       (task.childSessionId === candidate.childSessionId ||
-        task.toolCallId === candidate.part.callID ||
+        (candidate.part !== undefined && task.toolCallId === candidate.part.callID) ||
         task.taskId === candidate.agentId),
   );
 }
@@ -315,18 +351,20 @@ function runningStatus(input: {
   ) {
     return "running";
   }
+  const part = input.candidate.part;
   if (
+    part !== undefined &&
     input.parentProjection?.activeToolCalls.some(
       (tool) =>
-        tool.toolCallId === input.candidate.part.callID &&
+        tool.toolCallId === part.callID &&
         (tool.status === "pending" || tool.status === "running"),
     )
   ) {
     return "running";
   }
   return input.parentProjection &&
-    (input.candidate.part.state.status === "pending" ||
-      input.candidate.part.state.status === "running")
+    part !== undefined &&
+    (part.state.status === "pending" || part.state.status === "running")
     ? "running"
     : undefined;
 }
@@ -360,15 +398,16 @@ function endedStatus(input: {
   if (backgroundStatus) return backgroundStatus;
   if (input.childProjection?.status === "error") return "failed";
   if (input.childProjection?.status === "completed") return "success";
-  if (input.candidate.part.state.status === "error") {
-    return CANCELLATION_PATTERN.test(input.candidate.part.state.error) ? "cancelled" : "failed";
+  const part = input.candidate.part;
+  if (part !== undefined && part.state.status === "error") {
+    return CANCELLATION_PATTERN.test(part.state.error) ? "cancelled" : "failed";
   }
   if (input.candidate.stoppedStatus) return input.candidate.stoppedStatus;
   const outputStatus = stringField(input.candidate.output ?? {}, "status");
   if (outputStatus === "cancelled" || outputStatus === "stopped") return "cancelled";
   if (outputStatus === "failed" || outputStatus === "error") return "failed";
   if (outputStatus === "async_launched") return input.childOutcome.status ?? "lost";
-  if (input.candidate.part.state.status === "completed") return "success";
+  if (part !== undefined && part.state.status === "completed") return "success";
   return input.childOutcome.status ?? "lost";
 }
 
@@ -378,6 +417,7 @@ function startedAt(
 ): number | undefined {
   if (background?.startedAt) return background.startedAt.getTime();
   if (candidate.startedAt !== undefined) return candidate.startedAt;
+  if (candidate.part === undefined) return undefined;
   return "time" in candidate.part.state ? candidate.part.state.time.start : undefined;
 }
 
@@ -406,7 +446,7 @@ export function projectSessionSubagents(
     const common = {
       childSessionId: candidate.childSessionId,
       ...(candidate.agentId ? { agentId: candidate.agentId } : {}),
-      toolCallId: candidate.part.callID,
+      ...(candidate.part !== undefined ? { toolCallId: candidate.part.callID } : {}),
       subagentType: candidate.subagentType,
       title: candidate.title,
       ...(startedAt(candidate, background) !== undefined
@@ -418,7 +458,9 @@ export function projectSessionSubagents(
       continue;
     }
     const stateEndedAt =
-      "time" in candidate.part.state && "end" in candidate.part.state.time
+      candidate.part !== undefined &&
+      "time" in candidate.part.state &&
+      "end" in candidate.part.state.time
         ? candidate.part.state.time.end
         : undefined;
     ended.push({

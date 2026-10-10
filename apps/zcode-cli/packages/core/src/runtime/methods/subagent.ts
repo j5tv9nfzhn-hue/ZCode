@@ -28,7 +28,7 @@ import type { AgentRuntimeInternal } from "../internal.js";
 import { cloneModelSelection } from "../model-selection.js";
 import { resolveSubagentSelection } from "../helpers/subagent-selection.js";
 import type { AgentRuntimeDeps } from "../types.js";
-import { toMcpToolName } from "../../mcp/index.js";
+import { matchesModelVisibleMcpServerName, toMcpToolName } from "../../mcp/index.js";
 import { createBorrowedSubagentMcpAccess } from "../../subagent/borrowed-mcp-port.js";
 import { createSubagentMessageSink } from "../../subagent/message-steering.js";
 import {
@@ -259,6 +259,12 @@ export function createDefaultSubagentPort(
           bashTimeoutPolicy: this.config.bashTimeoutPolicy,
           midConversationSystem: this.config.midConversationSystem,
           bashShellSelection,
+          // runtimeFeatures 必须结构性继承：它门控 node_repl(js) 工具的注册与
+          // browserControlPort 的透传。不继承时子代理完全拿不到浏览器能力——
+          // 用户对编排 worker 说「用内置浏览器打开网页」会「被忽视」，因为
+          // 它物理上没有这个工具（只能退化用 Bash + WebFetch 去 curl）。
+          // 对齐 pentestOrchestrationPort 的同款纪律：能力端口要么完整继承，要么明确不继承。
+          runtimeFeatures: this.config.runtimeFeatures,
           // child 只复用父 runtime 已解析的 instructions snapshot；Project Context 仍不继承。
           currentDate: this.contextSourceSnapshot?.currentDate ?? this.config.currentDate,
           subagentContext: {
@@ -335,6 +341,11 @@ export function createDefaultSubagentPort(
           // Explore 子运行时会暴露 WebFetch，但之前没有继承主 runtime 的
           // HTTP client port，导致工具在真正发请求前抛出配置错误，而不是网络请求失败。
           httpClientPort: deps.httpClientPort,
+          // 浏览器控制端口：node_repl(js) 工具的 agent.browsers 靠它工作。
+          // 不继承时 js 工具里的浏览器 API 全部不可用（用户说的"内置浏览器打开网页"）。
+          // 门控在 runtime-tools.ts 的 resolveRuntimeBrowserUseEnabled：
+          // runtimeFeatures.browserUse === true && browserControlPort !== undefined。
+          browserControlPort: this.browserControlPort,
           imageProcessorPort: deps.imageProcessorPort,
           pdfDocumentPort: deps.pdfDocumentPort,
           memoryRoot: persistentMemory?.rootDir,
@@ -543,11 +554,47 @@ function resolveSubagentToolAllowlist(
     );
   }
   if (request.allowedTools.length > 0) {
+    // profile 显式声明了工具面时，MCP 工具（如 node_repl 的浏览器能力）不在那份列表里，
+    // 光靠借用不够——必须把**已借到的** MCP 工具补进 allowlist。
+    //
+    // 只补 profile 声明的 server（mcpServers / optionalMcpServers）下、且已在
+    // 借用快照里连接成功的工具。未连接的 server 不出现在 visibleMcpToolNames 里，
+    // 不会污染结果；validateSubagentMcpRequirements 因此也不会误报必需工具缺失。
+    const scopedMcpToolNames = filterMcpToolNamesByProfileScope(
+      visibleMcpToolNames,
+      request.profile.mcpServers,
+      request.profile.optionalMcpServers,
+    );
     return appendCoordinatorResponseTool(
-      filterSubagentChildToolNames(request.allowedTools, disallowedRules),
+      filterSubagentChildToolNames(
+        [...request.allowedTools, ...scopedMcpToolNames],
+        disallowedRules,
+      ),
     );
   }
   return appendCoordinatorResponseTool([]);
+}
+
+/**
+ * 按 profile 声明的 MCP server scope 过滤工具名。
+ *
+ * 工具名形如 `mcp__<server>__<tool>`（见 mcp/name.ts 的 toMcpToolName）。
+ * 只保留 server 段命中 mcpServers / optionalMcpServers 的工具——避免 profile 声明
+ * 一个 server 却把它之外的所有 MCP 工具也一并放进来。
+ * 两个 scope 都是 undefined 时返回空数组（profile 没声明任何 MCP → 不补）。
+ */
+function filterMcpToolNamesByProfileScope(
+  toolNames: readonly string[],
+  requiredServers: readonly string[] | undefined,
+  optionalServers: readonly string[] | undefined,
+): readonly string[] {
+  const scopes = [...(requiredServers ?? []), ...(optionalServers ?? [])];
+  if (scopes.length === 0) return [];
+  return toolNames.filter((toolName) => {
+    const [, serverSegment] = toolName.split("__");
+    if (!serverSegment) return false;
+    return scopes.some((scope) => matchesModelVisibleMcpServerName(scope, serverSegment));
+  });
 }
 
 function filterMcpToolNamesByParentAllowlist(
@@ -588,11 +635,22 @@ async function resolveSubagentMcpAccess(
     return { config: undefined, parentSnapshot: undefined, port: undefined, snapshot: undefined };
   }
 
-  const scopedServerNames = request.profile.mcpServers?.length
+  // 必需 vs 可选分离（见 AgentProfile 的字段说明）：
+  //   requiredServerNames —— 父未连接 → ConfigurationError（下面第 626 行附近的检查）
+  //   borrowServerNames   —— 借用 scope，含可选 server；父未连接时它们只是不出现在
+  //                          借用快照里，不影响子代理启动。
+  const requiredServerNames = request.profile.mcpServers?.length
     ? request.profile.mcpServers
     : undefined;
+  const optionalServerNames = request.profile.optionalMcpServers?.length
+    ? request.profile.optionalMcpServers
+    : undefined;
+  const scopedServerNames =
+    requiredServerNames || optionalServerNames
+      ? [...(requiredServerNames ?? []), ...(optionalServerNames ?? [])]
+      : undefined;
   if (!this.mcpPort || this.config.mcp?.enabled === false) {
-    if (scopedServerNames) {
+    if (requiredServerNames) {
       throw createSubagentMcpUnavailableError(request);
     }
     return {
@@ -606,13 +664,14 @@ async function resolveSubagentMcpAccess(
   // child 不拥有连接生命周期，只能复用 parent constructor 已创建的启动快照。
   const parentStartupSnapshot = await this.mcpStartupPromise;
   if (!parentStartupSnapshot) {
-    if (scopedServerNames) {
+    if (requiredServerNames) {
       throw createSubagentMcpUnavailableError(request);
     }
     return { config: undefined, parentSnapshot: undefined, port: undefined, snapshot: undefined };
   }
 
-  const unavailableScopedServerNames = (scopedServerNames ?? []).filter(
+  // 必需性检查只覆盖 mcpServers——optionalMcpServers 缺席是正常状态。
+  const unavailableScopedServerNames = (requiredServerNames ?? []).filter(
     (serverName) => parentStartupSnapshot.statuses[serverName]?.status !== "connected",
   );
   if (unavailableScopedServerNames.length > 0) {
@@ -645,6 +704,9 @@ async function resolveSubagentMcpAccess(
 
 function shouldBorrowParentMcp(request: ExploreSubagentRuntimeRequest): boolean {
   if ((request.profile.mcpServers?.length ?? 0) > 0) return true;
+  // 可选 MCP 同样需要借用：弱依赖不等于不依赖——父有 node_repl 时子代理要能用上，
+  // 父没有时借用空集即可（必需性检查只对 mcpServers 生效，见 resolveSubagentMcpAccess）。
+  if ((request.profile.optionalMcpServers?.length ?? 0) > 0) return true;
   if (request.allowedTools.length === 0 || request.allowedTools.includes("*")) return true;
   return request.allowedTools.some((toolName) => {
     const normalized = toolName.trim();

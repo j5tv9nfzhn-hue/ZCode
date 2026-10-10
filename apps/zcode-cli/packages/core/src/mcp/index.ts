@@ -26,7 +26,7 @@ import {
 } from "./image-normalization.js";
 import { toMcpToolName, toModelVisibleMcpNamePart } from "./name.js";
 
-export { toMcpToolName } from "./name.js";
+export { matchesModelVisibleMcpServerName, toMcpToolName } from "./name.js";
 
 export {
   HOST_NODE_REPL_IMAGE_MAX_DIMENSION,
