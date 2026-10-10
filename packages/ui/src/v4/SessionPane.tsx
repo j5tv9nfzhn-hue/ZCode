@@ -1423,7 +1423,7 @@ export function SessionPane({
       workspacePath,
     ],
   );
-  const { settings: sharedSettings } = useSettings();
+  const { settings: sharedSettings, loading: sharedSettingsLoading } = useSettings();
   const readPlanIdentitySnapshot = usePlanIdentitySnapshot(
     sharedSettings?.providerFamilyDomain,
     sharedSettings?.providerFamilyDomain
@@ -1440,6 +1440,55 @@ export function SessionPane({
   const snapshotSessionId = snapshot?.sessionId ?? null;
   const snapshotFollowupMode = snapshot?.config.followupMode ?? null;
   const snapshotRevision = snapshot?.revision ?? null;
+
+  // ── CTF Console 按-session-固定开关的草稿重建 ──
+  // pentestOrchestrationEnabled / assistantCoTPrefillEnabled / unfilteredFullOutputEnabled
+  // 只在 createSession 边界写入 runtimeConfig（见 bootstrap 的 resolveSessionStartupPreferences
+  // 与 server-operations 的 session/create 分支）。草稿态的预热会话在进入 workspace 时立即创建，
+  // 若用户随后才打开开关，预热会话仍冻结创建时的旧值——表现就是「开关已开、模型却完全没走
+  // 编排身份」，因为编排端口与三个编排角色从没被注入过。
+  //
+  // 这与 modelSelectionView.revision 是完全相同的失效模式（旧预热会话冻结早期快照），
+  // 处理方式对齐：未发送的草稿不是执行事实，开关变化时回收预热会话并按新值重建。
+  // 正式会话不在此列——它的 runtimeConfig 已固化，重建会丢上下文；要用新开关需显式新建。
+  const draftSessionFixedSettingsRef = useRef<{
+    pentestOrchestrationEnabled: boolean;
+    assistantCoTPrefillEnabled: boolean;
+    unfilteredFullOutputEnabled: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (sessionId !== null) {
+      draftSessionFixedSettingsRef.current = null;
+      return;
+    }
+    // loading 完成前 settings 为 null，「=== true」会读成 false；等真实值到位再记基线。
+    if (sharedSettingsLoading) return;
+    const current = {
+      pentestOrchestrationEnabled: sharedSettings?.pentestOrchestrationEnabled === true,
+      assistantCoTPrefillEnabled: sharedSettings?.assistantCoTPrefillEnabled === true,
+      unfilteredFullOutputEnabled: sharedSettings?.unfilteredFullOutputEnabled === true,
+    };
+    const previous = draftSessionFixedSettingsRef.current;
+    draftSessionFixedSettingsRef.current = current;
+    // 首帧只记基线：loading 完成这一次不能当成「用户改了设置」。
+    if (previous === null) return;
+    if (
+      previous.pentestOrchestrationEnabled === current.pentestOrchestrationEnabled &&
+      previous.assistantCoTPrefillEnabled === current.assistantCoTPrefillEnabled &&
+      previous.unfilteredFullOutputEnabled === current.unfilteredFullOutputEnabled
+    ) {
+      return;
+    }
+    useZCodeSessionStore.getState().invalidateDraftRuntime(workspacePath, workspaceIdentity);
+  }, [
+    sessionId,
+    sharedSettings?.assistantCoTPrefillEnabled,
+    sharedSettings?.pentestOrchestrationEnabled,
+    sharedSettings?.unfilteredFullOutputEnabled,
+    sharedSettingsLoading,
+    workspaceIdentity,
+    workspacePath,
+  ]);
 
   // 注入模式对齐 PermissionDialog：theme/codePreviewSettings 在宿主取 store，
   // 经稳定引用的 rowContext 下发给 memo 行组件（MessageResponse/ToolCallBlocks）。

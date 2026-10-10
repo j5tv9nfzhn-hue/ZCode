@@ -107,6 +107,22 @@ export function CtfConsoleOrchestrationPanel({
     );
   }, [intl, overview]);
 
+  // hook 必须在 early return 之前：overview 从 undefined（轮询未就绪）变为有值时，
+  // 若把 useMemo 放在 early return 之后，hook 调用数量会从 N 变 N+1，
+  // React 直接抛 #310（Rendered more hooks than during the previous render）。
+  // 派生态一律提到所有分支之前算，空值返回空数组即可——纯计算，无副作用。
+  const { metGoals, openGoals, sortedOpenIntents } = useMemo(() => {
+    if (!overview) {
+      return { metGoals: [], openGoals: [], sortedOpenIntents: [] };
+    }
+    return {
+      metGoals: overview.goals.filter((goal) => goal.state === GOAL_MET_STATE),
+      openGoals: overview.goals.filter((goal) => goal.state !== GOAL_MET_STATE),
+      // 排序只在快照变化时跑，不在每次 render 时重排。
+      sortedOpenIntents: [...overview.openIntents].sort((a, b) => b.priority - a.priority),
+    };
+  }, [overview]);
+
   if (!overview) {
     return (
       <section
@@ -139,18 +155,6 @@ export function CtfConsoleOrchestrationPanel({
       </section>
     );
   }
-
-  const { metGoals, openGoals, sortedOpenIntents } = useMemo(() => {
-    if (!overview) {
-      return { metGoals: [], openGoals: [], sortedOpenIntents: [] };
-    }
-    return {
-      metGoals: overview.goals.filter((goal) => goal.state === GOAL_MET_STATE),
-      openGoals: overview.goals.filter((goal) => goal.state !== GOAL_MET_STATE),
-      // 排序只在快照变化时跑，不在每次 render 时重排。
-      sortedOpenIntents: [...overview.openIntents].sort((a, b) => b.priority - a.priority),
-    };
-  }, [overview]);
 
   return (
     <section
