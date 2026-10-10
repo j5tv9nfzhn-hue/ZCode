@@ -466,6 +466,13 @@ const appSettingsObjectSchema = z.object({
   pentestOrchestrationEnabled: z.boolean().default(false),
   assistantCoTPrefillEnabled: z.boolean().default(false),
   unfilteredFullOutputEnabled: z.boolean().default(false),
+  // 工具调用拦截层（对齐 ARTEX guard + intercept）。三字段：
+  //   interceptEnabled        —— 总开关；关掉即整层不参与（连规则也不跑）
+  //   interceptJudgeEnabled   —— LLM judge 开关；关掉只跑正则规则
+  //   interceptJudgeFailAction —— judge 失败策略，**缺省 allow**（fail-open）
+  interceptEnabled: z.boolean().default(true),
+  interceptJudgeEnabled: z.boolean().default(true),
+  interceptJudgeFailAction: z.enum(["allow", "ask", "deny"]).default("allow"),
 
   lastWorkspaceSession: z.array(appWorkspaceSessionEntrySchema).default([]),
   lastActiveTabIndex: z.number().int().nonnegative().default(0),
@@ -555,6 +562,9 @@ export const appSettingsPatchSchema = z.object({
   customSystemPrompt: nonEmptyStringSchema.optional(),
   pentestOrchestrationEnabled: z.boolean().optional(),
   assistantCoTPrefillEnabled: z.boolean().optional(),
+  interceptEnabled: z.boolean().optional(),
+  interceptJudgeEnabled: z.boolean().optional(),
+  interceptJudgeFailAction: z.enum(["allow", "ask", "deny"]).optional(),
   unfilteredFullOutputEnabled: z.boolean().optional(),
 
   lastWorkspaceSession: z.array(appWorkspaceSessionEntrySchema).optional(),

@@ -387,6 +387,13 @@ export const TID_SETTINGS_PROJECTION_DIFF_CAPTURE_ASSISTANT_SWITCH =
 export const TID_SETTINGS_CTF_PROBE_SUBMIT = "settings-ctf-probe-submit";
 /** 渗透编排总开关（CTF Console，默认关闭）。 */
 export const TID_SETTINGS_PENTEST_ORCHESTRATION_SWITCH = "settings-pentest-orchestration-switch";
+/** 拦截层总开关（对齐 ARTEX guard + intercept）。 */
+export const TID_SETTINGS_INTERCEPT_ENABLED_SWITCH = "settings-intercept-enabled-switch";
+/** 拦截层 LLM judge 开关。 */
+export const TID_SETTINGS_INTERCEPT_JUDGE_ENABLED_SWITCH =
+  "settings-intercept-judge-enabled-switch";
+/** judge 失败策略选择。 */
+export const TID_SETTINGS_INTERCEPT_JUDGE_FAIL_ACTION = "settings-intercept-judge-fail-action";
 /** 覆盖度面板容器（CTF Console 渗透编排）。 */
 export const TID_SETTINGS_CTF_COVERAGE_PANEL = "settings-ctf-coverage-panel";
 /** 覆盖度面板头部状态行（测试数 / 分母或禁用原因）。 */

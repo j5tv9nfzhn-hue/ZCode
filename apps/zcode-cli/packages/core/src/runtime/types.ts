@@ -239,6 +239,15 @@ export interface AgentRuntimeConfig {
    */
   unfilteredFullOutputEnabled?: boolean;
   /**
+   * 工具调用拦截层（对齐 ARTEX guard + intercept）。
+   * 缺席/false 即整层不参与（连正则规则也不跑）；由会话启动偏好固定。
+   */
+  interceptEnabled?: boolean;
+  /** 拦截层的 LLM judge 开关。总开关关闭时此项无效。缺省 true。 */
+  interceptJudgeEnabled?: boolean;
+  /** judge 失败策略。缺省 allow（fail-open）。 */
+  interceptJudgeFailAction?: "allow" | "ask" | "deny";
+  /**
    * 动态工作流子代理的身份输入：在场即让
    * context builder 走「基座 + 工作流子代理契约 + persona 叠加」路径，而不是把 persona 当
    * `systemPrompt` 整段替换。与 `systemPrompt` 互斥（builder 抛错）。

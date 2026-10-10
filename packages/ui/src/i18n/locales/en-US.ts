@@ -2151,6 +2151,18 @@ const enUS: Record<string, string> = {
   "settings.ctfConsole.pentestOrchestration.label": "Pentest orchestration",
   "settings.ctfConsole.pentestOrchestration.description":
     "Register the structured orchestration tools (record_fact / report_finding / add_intent / insert_assets / ...) and the three orchestration subagents (goals / planner / worker). Off by default; only new sessions pick it up.",
+  "settings.ctfConsole.intercept.label": "Tool-call interception",
+  "settings.ctfConsole.intercept.description":
+    "Platform-level safety boundary for tool calls: every call first passes built-in rules (rm -rf / DROP TABLE / curl -X DELETE and other destructive operations); unmatched calls go to a model judge. The judge sees only the concrete operation, never the task intent — normal pentest actions (injection probes / file reads / brute force / post-exploitation recon) always pass. Only new sessions pick it up.",
+  "settings.ctfConsole.interceptJudge.label": "Interception model judge",
+  "settings.ctfConsole.interceptJudge.description":
+    "Call the model to judge calls that match no rule. When off, only the regex rules run.",
+  "settings.ctfConsole.interceptFailAction.label": "Judge failure action",
+  "settings.ctfConsole.interceptFailAction.description":
+    "Action taken when the judge model call fails or its output cannot be parsed. Defaults to Allow (fail-open) — when it cannot judge, it does not block.",
+  "settings.ctfConsole.interceptFailAction.allow": "Allow",
+  "settings.ctfConsole.interceptFailAction.ask": "Ask",
+  "settings.ctfConsole.interceptFailAction.deny": "Deny",
 
   "settings.ctfConsole.coverage.title": "Pentest coverage",
   "settings.ctfConsole.coverage.description":

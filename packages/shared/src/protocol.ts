@@ -334,6 +334,12 @@ export interface AppSettings {
   assistantCoTPrefillEnabled?: boolean;
   /** 完整输出：请求不下发 maxOutputTokens，由 provider 按模型上限生成；默认关闭。 */
   unfilteredFullOutputEnabled?: boolean;
+  /** 工具调用拦截层（对齐 ARTEX guard + intercept）；默认开启。 */
+  interceptEnabled?: boolean;
+  /** 拦截层 LLM judge 开关；默认开启。 */
+  interceptJudgeEnabled?: boolean;
+  /** judge 失败策略；默认 allow（fail-open）。 */
+  interceptJudgeFailAction?: "allow" | "ask" | "deny";
 
   onboardingOccupation?:
     | "office"

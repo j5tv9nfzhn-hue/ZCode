@@ -275,6 +275,10 @@ export function createRemoteWorkspaceServiceCollection(params: {
               pentestOrchestrationEnabled: settings.pentestOrchestrationEnabled === true,
               assistantCoTPrefillEnabled: settings.assistantCoTPrefillEnabled === true,
               unfilteredFullOutputEnabled: settings.unfilteredFullOutputEnabled === true,
+              // 拦截层：与本地 Host 同规则（非显式关闭即开启）。
+              interceptEnabled: settings.interceptEnabled !== false,
+              interceptJudgeEnabled: settings.interceptJudgeEnabled !== false,
+              interceptJudgeFailAction: settings.interceptJudgeFailAction ?? "allow",
               // remote workspace 与本地 Host 保持同一 scope 边界，首次执行不得再次等待 client config。
               ...(request.scope === "user-execution" && settings.integratedTerminalShell
                 ? { integratedTerminalShell: settings.integratedTerminalShell }

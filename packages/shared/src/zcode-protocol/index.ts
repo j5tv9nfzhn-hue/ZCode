@@ -1718,6 +1718,12 @@ export const zcodeSessionRuntimePreferencesResultSchema = z
     assistantCoTPrefillEnabled: z.boolean().optional(),
     // 完整输出（不下发 maxOutputTokens）；缺席即关闭（fail-closed）。
     unfilteredFullOutputEnabled: z.boolean().optional(),
+    // 工具调用拦截层（对齐 ARTEX guard + intercept）；缺席即整层不参与（fail-closed）。
+    interceptEnabled: z.boolean().optional(),
+    // 拦截层 LLM judge 开关；缺席用会话默认（true）。
+    interceptJudgeEnabled: z.boolean().optional(),
+    // judge 失败策略；缺席用会话默认（allow，fail-open）。
+    interceptJudgeFailAction: z.enum(["allow", "ask", "deny"]).optional(),
   })
   .strict();
 export type ZCodeSessionRuntimePreferencesResult = z.infer<

@@ -2019,6 +2019,18 @@ const zhCN: Record<string, string> = {
   "settings.ctfConsole.pentestOrchestration.label": "渗透编排",
   "settings.ctfConsole.pentestOrchestration.description":
     "开启后注册结构化编排工具（record_fact / report_finding / add_intent / insert_assets / …）与三个编排子代理（goals / planner / worker）。默认关闭，仅新建会话生效。",
+  "settings.ctfConsole.intercept.label": "工具调用拦截",
+  "settings.ctfConsole.intercept.description":
+    "平台级工具调用安全边界：每次工具调用先过内置规则（rm -rf / DROP TABLE / curl -X DELETE 等破坏性操作），未命中时交给模型判定。判定只看具体操作，不看任务意图——正常渗透（注入探测 / 读文件 / 爆破 / 落脚侦察）一律放行。仅新建会话生效。",
+  "settings.ctfConsole.interceptJudge.label": "拦截层模型判定",
+  "settings.ctfConsole.interceptJudge.description":
+    "规则未命中时调用模型判定。关闭后只跑正则规则，不调用模型。",
+  "settings.ctfConsole.interceptFailAction.label": "判定失败策略",
+  "settings.ctfConsole.interceptFailAction.description":
+    "模型调用失败或输出无法解析时的动作。默认「放行」（fail-open）——判定不了就不拦。",
+  "settings.ctfConsole.interceptFailAction.allow": "放行",
+  "settings.ctfConsole.interceptFailAction.ask": "请求确认",
+  "settings.ctfConsole.interceptFailAction.deny": "阻断",
 
   "settings.ctfConsole.coverage.title": "渗透覆盖度",
   "settings.ctfConsole.coverage.description":

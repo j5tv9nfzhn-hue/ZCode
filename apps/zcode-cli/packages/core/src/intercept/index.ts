@@ -8,6 +8,8 @@
 //   · systemBlockMessage                              —— 拦截框定文案
 
 export { Interceptor } from "./interceptor.js";
+export { createJudgeRunner } from "./judge-runner.js";
+export type { CreateJudgeRunnerOptions } from "./judge-runner.js";
 export { DEFAULT_ENABLED_TOOLS, DEFAULT_INTERCEPT_RULES, INTERCEPT_PATTERNS } from "./rules.js";
 export {
   DEFAULT_JUDGE_PROMPT,

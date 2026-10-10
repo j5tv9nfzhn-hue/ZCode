@@ -2167,6 +2167,11 @@ export function createZCodeAgentService(
                     assistantCoTPrefillEnabled: false,
                     unfilteredFullOutputEnabled: false,
                     pentestOrchestrationEnabled: false,
+                    // 拦截层是平台级安全边界：没有权威偏好时按**开启**兜底，而不是关闭——
+                    // 关闭会让「无法读取偏好」变成绕过拦截的路径。
+                    interceptEnabled: true,
+                    interceptJudgeEnabled: true,
+                    interceptJudgeFailAction: "allow",
                   },
                 );
               } catch (error) {

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useServices } from "@/hooks/useServices.js";
-import { CtfConsoleConfigPanel } from "@/settings/CtfConsoleConfigPanel.js";
+import {
+  CtfConsoleConfigPanel,
+  type InterceptJudgeFailAction,
+} from "@/settings/CtfConsoleConfigPanel.js";
 import { CtfConsoleCoveragePanel } from "@/settings/CtfConsoleCoveragePanel.js";
 import { CtfConsoleOrchestrationPanel } from "@/settings/CtfConsoleOrchestrationPanel.js";
 import type { SessionDebugPentestOverview } from "@zcode/shared";
@@ -78,21 +81,34 @@ export function CtfConsoleSection({
   assistantCoTPrefillEnabled,
   unfilteredFullOutputEnabled,
   pentestOrchestrationEnabled,
+  interceptEnabled,
+  interceptJudgeEnabled,
+  interceptJudgeFailAction,
   workspacePath,
   workspaceIdentity,
   onAssistantCoTPrefillEnabledChange,
   onUnfilteredFullOutputChange,
   onPentestOrchestrationChange,
+  onInterceptEnabledChange,
+  onInterceptJudgeEnabledChange,
+  onInterceptJudgeFailActionChange,
 }: {
   assistantCoTPrefillEnabled: boolean;
   unfilteredFullOutputEnabled: boolean;
   /** 渗透编排总开关（默认关闭）。 */
   pentestOrchestrationEnabled: boolean;
+  /** 工具调用拦截层（对齐 ARTEX guard + intercept，默认开启）。 */
+  interceptEnabled: boolean;
+  interceptJudgeEnabled: boolean;
+  interceptJudgeFailAction: InterceptJudgeFailAction;
   workspacePath?: string;
   workspaceIdentity?: string;
   onAssistantCoTPrefillEnabledChange: (enabled: boolean) => Promise<void>;
   onUnfilteredFullOutputChange: (enabled: boolean) => Promise<void>;
   onPentestOrchestrationChange: (enabled: boolean) => Promise<void>;
+  onInterceptEnabledChange: (enabled: boolean) => Promise<void>;
+  onInterceptJudgeEnabledChange: (enabled: boolean) => Promise<void>;
+  onInterceptJudgeFailActionChange: (action: InterceptJudgeFailAction) => Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
   const pentestOverview = usePentestOverview(workspacePath, workspaceIdentity);
@@ -115,6 +131,12 @@ export function CtfConsoleSection({
         onUnfilteredFullOutputChange={onUnfilteredFullOutputChange}
         pentestOrchestrationEnabled={pentestOrchestrationEnabled}
         onPentestOrchestrationChange={onPentestOrchestrationChange}
+        interceptEnabled={interceptEnabled}
+        interceptJudgeEnabled={interceptJudgeEnabled}
+        interceptJudgeFailAction={interceptJudgeFailAction}
+        onInterceptEnabledChange={onInterceptEnabledChange}
+        onInterceptJudgeEnabledChange={onInterceptJudgeEnabledChange}
+        onInterceptJudgeFailActionChange={onInterceptJudgeFailActionChange}
       />
 
       <CtfConsoleCoveragePanel overview={pentestOverview} />

@@ -365,6 +365,12 @@ export interface AgentRuntime {
   ): Promise<void>;
   getSessionModelSelection(): ModelSelection | undefined;
   setSessionModelSelection(selection: ModelSelection | undefined): void;
+  /** 拦截层总开关（只读）。见 AgentRuntimeConfig.interceptEnabled。 */
+  getInterceptEnabled(): boolean;
+  /** 拦截层 LLM judge 开关（只读）。缺省 true。 */
+  getInterceptJudgeEnabled(): boolean;
+  /** judge 失败策略（只读）。缺省 allow。 */
+  getInterceptJudgeFailAction(): "allow" | "ask" | "deny";
   getProjectId(): ProjectId;
   ensureSessionPersistedForExternalActivity(
     input: string,

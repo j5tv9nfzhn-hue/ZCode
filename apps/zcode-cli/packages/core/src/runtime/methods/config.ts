@@ -95,6 +95,23 @@ export function getSessionModelSelection(this: AgentRuntimeInternal): ModelSelec
   return this.sessionModelSelection && cloneModelSelection(this.sessionModelSelection);
 }
 
+/** 拦截层总开关（只读）。workflow_child 继承父会话时需要它。 */
+export function getInterceptEnabled(this: AgentRuntimeInternal): boolean {
+  return this.config.interceptEnabled === true;
+}
+
+/** 拦截层 LLM judge 开关（只读）。缺省 true。 */
+export function getInterceptJudgeEnabled(this: AgentRuntimeInternal): boolean {
+  return this.config.interceptJudgeEnabled !== false;
+}
+
+/** judge 失败策略（只读）。缺省 allow（fail-open）。 */
+export function getInterceptJudgeFailAction(
+  this: AgentRuntimeInternal,
+): "allow" | "ask" | "deny" {
+  return this.config.interceptJudgeFailAction ?? "allow";
+}
+
 export function setSessionModelSelection(
   this: AgentRuntimeInternal,
   selection: ModelSelection | undefined,

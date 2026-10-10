@@ -686,6 +686,10 @@ export function SettingsPage({
   const assistantCoTPrefillEnabled = sharedSettings?.assistantCoTPrefillEnabled === true;
   const unfilteredFullOutputEnabled = sharedSettings?.unfilteredFullOutputEnabled === true;
   const pentestOrchestrationEnabled = sharedSettings?.pentestOrchestrationEnabled === true;
+  // 拦截层（对齐 ARTEX guard + intercept）。schema 已给默认值，这里按「非显式关闭即开启」读取。
+  const interceptEnabled = sharedSettings?.interceptEnabled !== false;
+  const interceptJudgeEnabled = sharedSettings?.interceptJudgeEnabled !== false;
+  const interceptJudgeFailAction = sharedSettings?.interceptJudgeFailAction ?? "allow";
   const nativeSearchEnhancementsEnabled = sharedSettings?.nativeSearchEnhancementsEnabled !== false;
   const askUserQuestionAutoResolutionEnabled =
     sharedSettings?.askUserQuestionAutoResolutionEnabled !== false;
@@ -978,6 +982,50 @@ export function SettingsPage({
           resultSource: "shared_settings",
           stateAfter: enabled ? "enabled" : "disabled",
         },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleInterceptEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "toggle_intercept",
+        trigger: "switch",
+        operation: () => updateSharedSettings({ interceptEnabled: enabled }),
+        completed: {
+          resultSource: "shared_settings",
+          stateAfter: enabled ? "enabled" : "disabled",
+        },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleInterceptJudgeEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "toggle_intercept_judge",
+        trigger: "switch",
+        operation: () => updateSharedSettings({ interceptJudgeEnabled: enabled }),
+        completed: {
+          resultSource: "shared_settings",
+          stateAfter: enabled ? "enabled" : "disabled",
+        },
+      });
+    },
+    [updateSharedSettings],
+  );
+  const handleInterceptJudgeFailActionChange = useCallback(
+    async (action: "allow" | "ask" | "deny") => {
+      await runSettingsActionAsync({
+        featureId: "settings.system_prompt",
+        action: "set_intercept_fail_action",
+        trigger: "select",
+        operation: () => updateSharedSettings({ interceptJudgeFailAction: action }),
+        // stateAfter 只表达开关态；策略值是选择项，不映射到 enabled/disabled，
+        // 用「非 disabled 即 enabled」表达「已设置」。
+        completed: { resultSource: "shared_settings", stateAfter: "enabled" },
       });
     },
     [updateSharedSettings],
@@ -1919,6 +1967,12 @@ export function SettingsPage({
                             }
                             onUnfilteredFullOutputChange={handleUnfilteredFullOutputChange}
                             onPentestOrchestrationChange={handlePentestOrchestrationChange}
+                            interceptEnabled={interceptEnabled}
+                            interceptJudgeEnabled={interceptJudgeEnabled}
+                            interceptJudgeFailAction={interceptJudgeFailAction}
+                            onInterceptEnabledChange={handleInterceptEnabledChange}
+                            onInterceptJudgeEnabledChange={handleInterceptJudgeEnabledChange}
+                            onInterceptJudgeFailActionChange={handleInterceptJudgeFailActionChange}
                           />
                         ) : activeSection === "plugin" ? (
                           <PluginsSection

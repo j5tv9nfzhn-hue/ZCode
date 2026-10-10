@@ -160,6 +160,12 @@ interface SessionStartupPreferences {
   assistantCoTPrefillEnabled: boolean;
   /** 完整输出：不下发 maxOutputTokens；缺席/false 即关闭。 */
   unfilteredFullOutputEnabled: boolean;
+  /** 工具调用拦截层总开关；缺席/false 即整层不参与。 */
+  interceptEnabled: boolean;
+  /** 拦截层 LLM judge 开关；缺省 true。 */
+  interceptJudgeEnabled: boolean;
+  /** judge 失败策略；缺省 allow（fail-open）。 */
+  interceptJudgeFailAction: "allow" | "ask" | "deny";
 }
 
 type SessionStartupPreferencesSource =
@@ -3243,6 +3249,10 @@ async function requestSessionRuntimePreferences(
         assistantCoTPrefillEnabled: false,
         unfilteredFullOutputEnabled: false,
         pentestOrchestrationEnabled: false,
+        // 旧 Host 兼容路径：拦截层按默认开启（平台级安全边界，不该因 Host 旧而缺席）。
+        interceptEnabled: true,
+        interceptJudgeEnabled: true,
+        interceptJudgeFailAction: "allow",
       };
     }
     throw error;
@@ -3267,6 +3277,12 @@ async function resolveSessionStartupPreferences(
       unfilteredFullOutputEnabled: false,
       // workflow_child 不继承编排：编排是主会话（task 根）的能力，子代理没有自己的编排会话。
       pentestOrchestrationEnabled: false,
+      // 拦截层继承父会话：它是平台级安全边界，子代理（worker 等）同样必须受约束。
+      // 关掉它会让子代理成为绕过拦截的后门。runtime 通过只读方法暴露这三项
+      // （config 是私有的）。
+      interceptEnabled: source.parent.app.runtime.getInterceptEnabled(),
+      interceptJudgeEnabled: source.parent.app.runtime.getInterceptJudgeEnabled(),
+      interceptJudgeFailAction: source.parent.app.runtime.getInterceptJudgeFailAction(),
       resolveInitialBashShellSelection: async () => inheritedShellSelection,
     };
   }
@@ -3291,6 +3307,9 @@ async function resolveSessionStartupPreferences(
     pentestOrchestrationEnabled: runtimePreferences.pentestOrchestrationEnabled === true,
     assistantCoTPrefillEnabled: runtimePreferences.assistantCoTPrefillEnabled === true,
     unfilteredFullOutputEnabled: runtimePreferences.unfilteredFullOutputEnabled === true,
+    interceptEnabled: runtimePreferences.interceptEnabled === true,
+    interceptJudgeEnabled: runtimePreferences.interceptJudgeEnabled !== false,
+    interceptJudgeFailAction: runtimePreferences.interceptJudgeFailAction ?? "allow",
     resolveInitialBashShellSelection: async () => {
       const executionPreferences = await requestSessionRuntimePreferences(
         context,
@@ -3391,6 +3410,10 @@ async function createRecord(
       pentestOrchestrationEnabled: startupPreferences.pentestOrchestrationEnabled,
       // 完整输出：按 session 固定，只影响单次请求参数。
       unfilteredFullOutputEnabled: startupPreferences.unfilteredFullOutputEnabled,
+      // 拦截层：按 session 固定（对齐 ARTEX 的启动期配置语义）。
+      interceptEnabled: startupPreferences.interceptEnabled,
+      interceptJudgeEnabled: startupPreferences.interceptJudgeEnabled,
+      interceptJudgeFailAction: startupPreferences.interceptJudgeFailAction,
       nativeSearchEnhancementsEnabled: startupPreferences.nativeSearchEnhancementsEnabled,
       modelContextBudgetStrategy: startupPreferences.modelContextBudgetStrategy,
       // Memory Settings 是现有 CLI features.memory/use 之外的总开关。只在关闭时

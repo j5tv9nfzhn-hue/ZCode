@@ -11,6 +11,7 @@ import type { HookRunResult, HookRunner, SessionId, ToolExecutor, TraceContext }
 import { HookEventName } from "../deps.js";
 import type { HookRunOptions } from "../../hooks/index.js";
 import type { HookInput } from "@zcode/contracts";
+import { createJudgeRunner } from "../../intercept/judge-runner.js";
 import { Interceptor, systemBlockMessage } from "../../intercept/index.js";
 import type { AgentRuntimeInternal } from "../internal.js";
 import type { AgentRuntimeDeps } from "../types.js";
@@ -102,11 +103,31 @@ function registerRuntimeBuiltInTools(runtime: AgentRuntimeInternal, deps: AgentR
  * 与用户配置 hook 的关系：串联——内置判定通过后，仍走用户 hook。两者互不遮蔽。
  */
 function createBuiltInInterceptRunner(runtime: AgentRuntimeInternal): HookRunner {
+  // judge 接线：复用会话当前模型（runtime.modelFactory + sessionModelSelection）。
+  // 与 ARTEX 的 profileID 语义等价——judge 走与主链路相同的 provider 与治理。
+  // selection 缺失时 runner 抛错 → judge 走 failAction（默认 allow）。
+  const judgeRunner = createJudgeRunner({
+    createModel: (selection) => runtime.modelFactory({ selection }),
+    getSelection: () => runtime.getSessionModelSelection(),
+  });
+  // 三项均来自会话启动偏好（AgentRuntimeConfig.intercept*）：
+  //   interceptEnabled        —— 总开关（缺席 → 整层不参与）
+  //   interceptJudgeEnabled   —— judge 开关（缺省 true）
+  //   interceptJudgeFailAction —— judge 失败策略（缺省 allow）
   const interceptor = new Interceptor({
+    judgeConfig: {
+      enabled: runtime.config.interceptJudgeEnabled !== false,
+      failAction: runtime.config.interceptJudgeFailAction ?? "allow",
+    },
+    judgeRunner,
     ...(runtime.logger === undefined ? {} : { logger: runtime.logger }),
   });
   return {
     async run(input: HookInput, options?: HookRunOptions): Promise<HookRunResult> {
+      // 总开关关闭 → 整层不参与（连规则也不跑）。
+      if (runtime.config.interceptEnabled !== true) {
+        return { additionalContexts: [] };
+      }
       if (input.hookEventName !== HookEventName.PreToolUse) {
         return { additionalContexts: [] };
       }

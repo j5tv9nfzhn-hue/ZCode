@@ -2272,6 +2272,11 @@ export function createLocalServices(options: {
               pentestOrchestrationEnabled: settings.pentestOrchestrationEnabled === true,
               assistantCoTPrefillEnabled: settings.assistantCoTPrefillEnabled === true,
               unfilteredFullOutputEnabled: settings.unfilteredFullOutputEnabled === true,
+              // 拦截层：settings schema 已给默认值（enabled=true / judge=true / failAction=allow），
+              // 这里按「非显式关闭即开启」映射，与 CTF 开关的 fail-open 语义一致。
+              interceptEnabled: settings.interceptEnabled !== false,
+              interceptJudgeEnabled: settings.interceptJudgeEnabled !== false,
+              interceptJudgeFailAction: settings.interceptJudgeFailAction ?? "allow",
               // user-execution 只消费 Shell；共享默认策略是统一 result schema 的兼容占位，
               // 不会覆盖 runtime-materialization 阶段已经固定的 strategy。
               ...(scope === "user-execution" && settings.integratedTerminalShell
