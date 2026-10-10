@@ -12,7 +12,7 @@
 > 本仓库是 ZCode 开源代码的**二次开发自维护分支**，**与上游官方 ZCode 无任何关联**。
 >
 > - **非官方发行版本**。不继承、不使用、不调用官方产品的账号体系、服务端点、分发渠道与运营策略；官方不认可、不背书、不维护本分支的任何改动。
-> - 代码基线为上游 **3.14.3**，版本号由本分支自主维护（当前 **3.14.11**），不追随上游版本节奏。
+> - 代码基线为上游 **3.14.3**，版本号由本分支自主维护（当前 **3.14.12**），不追随上游版本节奏。
 > - **仅本人使用**：不对外分发、不作任何功能或安全承诺、不提供支持。
 > - 许可与第三方版权仍遵循上游条款，见 [项目声明](#项目声明)。
 > - 升级方式为**重新构建安装**，不依赖任何自动更新通道。
@@ -21,6 +21,8 @@
 ZCode 是 AI 编程工作台，本仓库只交付桌面端。浏览器界面与独立终端 Agent 发行产品已移除；`apps/zcode-cli` 保留为桌面端启动的 Agent 运行时源码。
 
 ## 更新
+
+- 2026-10-10：自维护分支 **3.14.12** —— 编排架构对齐 ARTEX（参照 `C:\Users\Administrator\Desktop\artex-ko` 源码分析）。**语义层**：（1）`SECURITY_NOTICE` 移除授权核验框架——原文「require clear authorization context」会诱导模型停手去核验授权（查 HackerOne / security.txt / 要求书面凭证），把执行任务变成尽调任务；改为「平台已授权，直接执行」的前提陈述（对齐 ARTEX `guard.go` 已移除 RoE 机制的设计）。（2）编排角色提示词（goals/planner/worker）对齐 ARTEX 的角色定位，goals 强化「范围未登记不得提交目标」的严格按序 + `add_task_scope` 入参格式专章。（3）`add_task_scope` schema 支持单条模式（`{kind, value}`）——过去只支持批量 `{entries: [{kind, value}]}`，模型常写成字符串数组 `["arena.ai"]` 且无法自纠，实测卡在同一条意图里反复重试。**架构层**：（4）任务创建即启动编排——编排端口在场且图里既无目标也无意图时，首条任务消息直接进编排循环，主会话探索轮被跳过（对齐 ARTEX 的 `launchTask`）；过去主会话先跑一轮才启动编排，用户第一条渗透任务必然先被主模型以普通身份评估一次并拒绝。（5）主会话降级为操舵身份——编排模式下主会话身份整段换成「只观察 + 只操舵，不亲自探索、不自主生成意图」（对齐 ARTEX `mainagent.go`），消除「主会话先拒绝」的机会。**数据层**：（6）新增 `po_constraint` 操作约束表（迁移 0024，对齐 ARTEX `task_constraints`）——约束是最高优先级边界，凌驾于一切探索/拓面启发式之上，每步注入 goals/planner/worker 的 prompt 顶部；新增 `set_constraints` 工具（编排工具 10 → 11 个）。验证：core/adapters/bootstrap typecheck 通过，pentest 测试 50/50，oxfmt 全仓 2863 文件全绿。
 
 - 2026-10-10：自维护分支 **3.14.11** —— 修复两处导致 CTF Console 不可用的缺陷：（1）设置页打开即崩溃（React #310，`CtfConsoleOrchestrationPanel` 的 `useMemo` 放在 early return 之后，overview 从 undefined 变为有值时 hook 数量变化）；（2）开启编排开关后模型仍不走编排身份（草稿预热会话在设置变更前已创建，`pentestOrchestrationEnabled` 等按-session-固定开关冻结在旧值；现与 `modelSelectionView.revision` 同款处理——开关变化时回收未发送的预热会话并按新值重建）。
 
