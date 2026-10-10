@@ -7,7 +7,11 @@ import {
   registerBuiltInTools,
   traceContextToLogContext,
 } from "../deps.js";
-import type { HookRunner, SessionId, ToolExecutor, TraceContext } from "../deps.js";
+import type { HookRunResult, HookRunner, SessionId, ToolExecutor, TraceContext } from "../deps.js";
+import { HookEventName } from "../deps.js";
+import type { HookRunOptions } from "../../hooks/index.js";
+import type { HookInput } from "@zcode/contracts";
+import { Interceptor, systemBlockMessage } from "../../intercept/index.js";
 import type { AgentRuntimeInternal } from "../internal.js";
 import type { AgentRuntimeDeps } from "../types.js";
 import { resolveRuntimeEmbeddedSearchEnabled } from "../methods/embedded-search-branch.js";
@@ -88,11 +92,82 @@ function registerRuntimeBuiltInTools(runtime: AgentRuntimeInternal, deps: AgentR
   });
 }
 
+/**
+ * 内置拦截判定器（对齐 ARTEX guard + intercept）——挂在用户配置 hook **之前**。
+ *
+ * 为什么前置：拦截层的判定是平台级安全边界，不该被用户 hook 的顺序或用户 hook 的
+ * 缺失影响。它只处理 PreToolUse，判定 deny/ask 时返回 permissionBehavior，
+ * call-runner 会据此在 handler 执行前拦下（见 call-runner.ts:242）。
+ *
+ * 与用户配置 hook 的关系：串联——内置判定通过后，仍走用户 hook。两者互不遮蔽。
+ */
+function createBuiltInInterceptRunner(runtime: AgentRuntimeInternal): HookRunner {
+  const interceptor = new Interceptor({
+    ...(runtime.logger === undefined ? {} : { logger: runtime.logger }),
+  });
+  return {
+    async run(input: HookInput, options?: HookRunOptions): Promise<HookRunResult> {
+      if (input.hookEventName !== HookEventName.PreToolUse) {
+        return { additionalContexts: [] };
+      }
+      const decision = await interceptor.evaluate({
+        toolName: input.toolName,
+        toolInput: input.toolInput,
+        workingDirectory: input.cwd,
+        ...(options?.signal === undefined ? {} : { signal: options.signal }),
+      });
+      if (decision === undefined || decision.action === "allow") {
+        return { additionalContexts: [] };
+      }
+      const reason = systemBlockMessage(decision.message);
+      if (decision.action === "deny") {
+        return {
+          additionalContexts: [],
+          hookPermissionDecisionReason: reason,
+          permissionBehavior: "deny",
+        };
+      }
+      // ask —— 交给既有权限审批流程（call-runner 会建 pending 并等用户决定）。
+      return {
+        additionalContexts: [],
+        hookPermissionDecisionReason: reason,
+        permissionBehavior: "ask",
+      };
+    },
+  };
+}
+
+/** 串联两个 hookRunner：先跑 primary；primary 未决（无 block/deny/ask）才跑 secondary。 */
+function chainHookRunners(
+  primary: HookRunner,
+  secondary: HookRunner | undefined,
+): HookRunner {
+  if (secondary === undefined) return primary;
+  return {
+    async run(input: HookInput, options?: HookRunOptions): Promise<HookRunResult> {
+      const first = await primary.run(input, options);
+      if (
+        first.permissionBehavior === "deny" ||
+        first.permissionBehavior === "ask" ||
+        first.preventContinuation === true
+      ) {
+        return first;
+      }
+      const second = await secondary.run(input, options);
+      return {
+        ...second,
+        additionalContexts: [...first.additionalContexts, ...second.additionalContexts],
+      };
+    },
+  };
+}
+
 function createRuntimeHookRunner(
   runtime: AgentRuntimeInternal,
   deps: AgentRuntimeDeps,
   sessionId: SessionId,
 ): HookRunner | undefined {
+  const builtInIntercept = createBuiltInInterceptRunner(runtime);
   let hookRunner =
     deps.hookRunner ??
     ((runtime.config.hooks?.enabled || deps.workspaceHookSnapshot) && deps.executionPort
@@ -108,6 +183,9 @@ function createRuntimeHookRunner(
           workspaceHookSnapshot: deps.workspaceHookSnapshot,
         })
       : undefined);
+
+  // 内置拦截器始终串联在最前；用户配置 hook 与之串联而非互斥。
+  hookRunner = chainHookRunners(builtInIntercept, hookRunner);
 
   if (!deps.sessionMailboxPort) {
     return hookRunner;
