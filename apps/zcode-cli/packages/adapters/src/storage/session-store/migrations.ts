@@ -930,7 +930,13 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
     id: "0023_pentest_orchestration",
     sql: PENTEST_ORCHESTRATION_MIGRATION_SQL,
   },
+  {
+    appVersion: "0.16.5",
+    id: "0024_pentest_constraints",
+    sql: PENTEST_CONSTRAINTS_MIGRATION_SQL,
+  },
 ];
 import { OFFICIAL_GLM_SELECTION_MIGRATION_SQL } from "./migrations/0021-official-glm-selection.js";
 import { BACKFILLED_SESSION_REASONING_MIGRATION_SQL } from "./migrations/0022-backfilled-session-reasoning.js";
 import { PENTEST_ORCHESTRATION_MIGRATION_SQL } from "./migrations/0023-pentest-orchestration.js";
+import { PENTEST_CONSTRAINTS_MIGRATION_SQL } from "./migrations/0024-pentest-constraints.js";
