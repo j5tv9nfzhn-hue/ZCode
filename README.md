@@ -12,7 +12,7 @@
 > 本仓库是 ZCode 开源代码的**二次开发自维护分支**，**与上游官方 ZCode 无任何关联**。
 >
 > - **非官方发行版本**。不继承、不使用、不调用官方产品的账号体系、服务端点、分发渠道与运营策略；官方不认可、不背书、不维护本分支的任何改动。
-> - 代码基线为上游 **3.14.3**，版本号由本分支自主维护（当前 **3.14.14**），不追随上游版本节奏。
+> - 代码基线为上游 **3.14.3**，版本号由本分支自主维护（当前 **3.14.15**），不追随上游版本节奏。
 > - **仅本人使用**：不对外分发、不作任何功能或安全承诺、不提供支持。
 > - 许可与第三方版权仍遵循上游条款，见 [项目声明](#项目声明)。
 > - 升级方式为**重新构建安装**，不依赖任何自动更新通道。
@@ -21,6 +21,8 @@
 ZCode 是 AI 编程工作台，本仓库只交付桌面端。浏览器界面与独立终端 Agent 发行产品已移除；`apps/zcode-cli` 保留为桌面端启动的 Agent 运行时源码。
 
 ## 更新
+
+- 2026-10-10：自维护分支 **3.14.15** —— 工具调用拦截层（对齐 ARTEX guard + intercept）。（1）**新增拦截层**：每次工具调用先过 17 条内置规则（rm -rf / DROP TABLE / TRUNCATE / curl -X DELETE / 删除类接口路径 / 磁盘擦写 / 关机重启 / kill -9 -1 / 清空防火墙等），未命中时交给 LLM judge 按 A1-A6 / D1-D6 判据分类。**判定输入只有 toolName + toolInput，不含任何用户意图 / 任务目标 / 编排态势**——「提权进服务器」「不限额调用 API」这类直白要求不再触发模型对齐，因为「提权」这个词从不进入判定输入；只有真去 systemctl stop / DROP TABLE / rm -rf 才 DENY。正常渗透动作（SQLi 注入探测、读 /etc/shadow、爆破、落脚侦察）全部放行。（2）**默认放行（fail-open）**：judge 未启用 / 模型调用失败 / 输出解析失败 → 放行；judge 失败策略缺省 allow。（3）**拦截框定**：拦截文案明确写「ZCode 平台管控·非目标防御」——裸原因读起来像目标侧 WAF/403，会诱使渗透 agent 去绕；明确框定让它换条路。（4）**配置贯通**：三项设置（总开关 / judge 开关 / 失败策略）从设置页可改，持久化到 setting.json，贯通 appSettings → 协议 → AgentRuntimeConfig → runtime；workflow_child 继承父会话配置（子代理同样受约束，否则成绕过后门）。（5）**judge 接线**：复用会话当前模型（modelFactory + sessionModelSelection），与 ARTEX 的 profileID 语义等价。验证：shared/core/bootstrap/services/desktop/ui typecheck 全通过，拦截层测试 20/20，oxfmt 全仓 2863 文件全绿。
 
 - 2026-10-10：自维护分支 **3.14.14** —— 根因修复「编排工具调用几乎全军覆没」+ 子代理反复重开 + 侧栏折叠。（1）**根因**：pentest-orchestration handler 把 **Zod 对象**当 `inputSchema` 传（全仓 49 个其他 handler 都正确用 `InputJsonSchema`，唯独这 11 个用错）——模型收到的 schema 是 Zod 内部结构 `{_def:...}`，不是合法 JSON Schema，provider 无法据此构造 function parameters，**全部编排工具的参数声明对模型不可解析**。修复：11 个 entry 全改为 JSON Schema 产物 + 补 `runtimeInputSchema`；`orchestrationEntry` 签名收紧（不再吞 `unknown`），runtime schema 设为必填——编译期防同类错误。新增两个测试断言锁死：inputSchema 必须是合法 JSON Schema（有 type/properties、无 `_def` 等 Zod 键）、树里不得有 `additionalProperties:false`。（2）**宽容模式**：新增 `toToolJsonSchema(schema, { lenient: true })`，递归删除 `additionalProperties:false`（Zod `.object()` 的默认输出），编排工具全部启用；同时删除契约 30 处 `.strict()`。模型多传看似合理的额外字段（给 asset 传 url、给 goal 传 reason）会被静默忽略，不再让整个调用失败。（3）**add_goals 接受字符串数组**：模型最自然的写法 `["确认越权", "确认登录可预测"]` 过去在 `goals[0]` 报 invalid_type 且无法自纠；现在对象数组与字符串数组都收（`normalizeGoalEntry` 归一）。（4）**子代理反复从头重开**：decompose 步用固定 suffix，goals 失败后重试命中同一 `parentToolCallId`，投影层原地 upsert → UI 显示「重启」；改用 stepIndex + 新增 `PENTEST_MAX_DECOMPOSE_ATTEMPTS = 3` 收敛兜底。（5）**侧栏折叠**：折叠态时 overlay 的 Z Logo 切换按钮与 rail 展开按钮重叠错位（水平差 ~8px、垂直 ~5px），且语义重复；现在折叠态不渲染 overlay 切换按钮（rail 是唯一入口），新增 `collapsedSidebarWidthPx` 让 overlay 工具组从 rail 右侧开始。验证：core/ui/adapters typecheck 通过，pentest 测试 55/55，oxfmt 全仓 2863 文件全绿。
 
