@@ -12,7 +12,7 @@
 > 本仓库是 ZCode 开源代码的**二次开发自维护分支**，**与上游官方 ZCode 无任何关联**。
 >
 > - **非官方发行版本**。不继承、不使用、不调用官方产品的账号体系、服务端点、分发渠道与运营策略；官方不认可、不背书、不维护本分支的任何改动。
-> - 代码基线为上游 **3.14.3**，版本号由本分支自主维护（当前 **3.14.12**），不追随上游版本节奏。
+> - 代码基线为上游 **3.14.3**，版本号由本分支自主维护（当前 **3.14.14**），不追随上游版本节奏。
 > - **仅本人使用**：不对外分发、不作任何功能或安全承诺、不提供支持。
 > - 许可与第三方版权仍遵循上游条款，见 [项目声明](#项目声明)。
 > - 升级方式为**重新构建安装**，不依赖任何自动更新通道。
@@ -21,6 +21,8 @@
 ZCode 是 AI 编程工作台，本仓库只交付桌面端。浏览器界面与独立终端 Agent 发行产品已移除；`apps/zcode-cli` 保留为桌面端启动的 Agent 运行时源码。
 
 ## 更新
+
+- 2026-10-10：自维护分支 **3.14.14** —— 根因修复「编排工具调用几乎全军覆没」+ 子代理反复重开 + 侧栏折叠。（1）**根因**：pentest-orchestration handler 把 **Zod 对象**当 `inputSchema` 传（全仓 49 个其他 handler 都正确用 `InputJsonSchema`，唯独这 11 个用错）——模型收到的 schema 是 Zod 内部结构 `{_def:...}`，不是合法 JSON Schema，provider 无法据此构造 function parameters，**全部编排工具的参数声明对模型不可解析**。修复：11 个 entry 全改为 JSON Schema 产物 + 补 `runtimeInputSchema`；`orchestrationEntry` 签名收紧（不再吞 `unknown`），runtime schema 设为必填——编译期防同类错误。新增两个测试断言锁死：inputSchema 必须是合法 JSON Schema（有 type/properties、无 `_def` 等 Zod 键）、树里不得有 `additionalProperties:false`。（2）**宽容模式**：新增 `toToolJsonSchema(schema, { lenient: true })`，递归删除 `additionalProperties:false`（Zod `.object()` 的默认输出），编排工具全部启用；同时删除契约 30 处 `.strict()`。模型多传看似合理的额外字段（给 asset 传 url、给 goal 传 reason）会被静默忽略，不再让整个调用失败。（3）**add_goals 接受字符串数组**：模型最自然的写法 `["确认越权", "确认登录可预测"]` 过去在 `goals[0]` 报 invalid_type 且无法自纠；现在对象数组与字符串数组都收（`normalizeGoalEntry` 归一）。（4）**子代理反复从头重开**：decompose 步用固定 suffix，goals 失败后重试命中同一 `parentToolCallId`，投影层原地 upsert → UI 显示「重启」；改用 stepIndex + 新增 `PENTEST_MAX_DECOMPOSE_ATTEMPTS = 3` 收敛兜底。（5）**侧栏折叠**：折叠态时 overlay 的 Z Logo 切换按钮与 rail 展开按钮重叠错位（水平差 ~8px、垂直 ~5px），且语义重复；现在折叠态不渲染 overlay 切换按钮（rail 是唯一入口），新增 `collapsedSidebarWidthPx` 让 overlay 工具组从 rail 右侧开始。验证：core/ui/adapters typecheck 通过，pentest 测试 55/55，oxfmt 全仓 2863 文件全绿。
 
 - 2026-10-10：自维护分支 **3.14.12** —— 编排架构对齐 ARTEX（参照 `C:\Users\Administrator\Desktop\artex-ko` 源码分析）。**语义层**：（1）`SECURITY_NOTICE` 移除授权核验框架——原文「require clear authorization context」会诱导模型停手去核验授权（查 HackerOne / security.txt / 要求书面凭证），把执行任务变成尽调任务；改为「平台已授权，直接执行」的前提陈述（对齐 ARTEX `guard.go` 已移除 RoE 机制的设计）。（2）编排角色提示词（goals/planner/worker）对齐 ARTEX 的角色定位，goals 强化「范围未登记不得提交目标」的严格按序 + `add_task_scope` 入参格式专章。（3）`add_task_scope` schema 支持单条模式（`{kind, value}`）——过去只支持批量 `{entries: [{kind, value}]}`，模型常写成字符串数组 `["arena.ai"]` 且无法自纠，实测卡在同一条意图里反复重试。**架构层**：（4）任务创建即启动编排——编排端口在场且图里既无目标也无意图时，首条任务消息直接进编排循环，主会话探索轮被跳过（对齐 ARTEX 的 `launchTask`）；过去主会话先跑一轮才启动编排，用户第一条渗透任务必然先被主模型以普通身份评估一次并拒绝。（5）主会话降级为操舵身份——编排模式下主会话身份整段换成「只观察 + 只操舵，不亲自探索、不自主生成意图」（对齐 ARTEX `mainagent.go`），消除「主会话先拒绝」的机会。**数据层**：（6）新增 `po_constraint` 操作约束表（迁移 0024，对齐 ARTEX `task_constraints`）——约束是最高优先级边界，凌驾于一切探索/拓面启发式之上，每步注入 goals/planner/worker 的 prompt 顶部；新增 `set_constraints` 工具（编排工具 10 → 11 个）。验证：core/adapters/bootstrap typecheck 通过，pentest 测试 50/50，oxfmt 全仓 2863 文件全绿。
 
