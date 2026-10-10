@@ -2041,6 +2041,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
             canGoBack={canGoBack}
             canGoForward={canGoForward}
             showNewTaskButton={showTopOverlayNewTaskButton}
+            collapsedSidebarWidthPx={collapsedSidebarWidthPx}
             appLogoUrl={appLogoUrl}
             platform={platform}
             onToggleSidebar={handleUserToggleSidebar}

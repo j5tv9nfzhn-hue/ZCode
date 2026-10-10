@@ -43,6 +43,12 @@ interface DesktopTopOverlayProps {
   onGoForward: () => void;
   hideTaskNavigationButtons?: boolean;
   newTaskDisabledReason?: string;
+  /**
+   * 折叠态 rail 宽度（px）。折叠时 overlay 内容需右移这么多，让工具组从 rail 右侧
+   * 开始，而不是压在 36px rail 上（折叠态 rail 自身已含展开按钮，overlay 的
+   * Logo/切换按钮同时在场会重叠且位置不齐）。
+   */
+  collapsedSidebarWidthPx?: number;
 }
 
 export function DesktopTopOverlay({
@@ -73,6 +79,7 @@ export function DesktopTopOverlay({
   onGoForward,
   hideTaskNavigationButtons = false,
   newTaskDisabledReason,
+  collapsedSidebarWidthPx,
 }: DesktopTopOverlayProps) {
   const { intl } = useZCodeIntl();
   const SidebarToggleIcon = isSidebarVisible ? PanelLeftClose : PanelLeftOpen;
@@ -95,6 +102,13 @@ export function DesktopTopOverlay({
         paddingRight: WINDOWS_CAPTION_CONTROLS_RIGHT_INSET_VAR,
       }
     : undefined;
+  // 折叠态：rail 占据左侧 36px 且自带展开按钮；overlay 的工具组必须右移到 rail 右侧，
+  // 否则会与 rail 重叠（Windows/Linux 的 pl-3 与 rail 的居中按钮水平差 8px、
+  // 加上 top-1 mt-px 的垂直差 5px，视觉上就是"图标错位/没完全折叠"）。
+  const collapsedRailInsetStyle =
+    !isSidebarVisible && usesCustomCaptionArea && collapsedSidebarWidthPx !== undefined
+      ? { paddingLeft: `${collapsedSidebarWidthPx + 12}px` }
+      : undefined;
   const topOverlayWidthStyle = isSidebarVisible
     ? { width: "var(--workspace-sidebar-panel-width)" }
     : undefined;
@@ -112,6 +126,7 @@ export function DesktopTopOverlay({
         style={{
           ...macTopOverlayPaddingStyle,
           ...windowsTopOverlayPaddingStyle,
+          ...collapsedRailInsetStyle,
         }}
         className={cn(
           "flex items-center",
@@ -131,7 +146,10 @@ export function DesktopTopOverlay({
             "pointer-events-auto flex items-center gap-1 shrink-0 [app-region:no-drag]",
           )}
         >
-          {usesCustomCaptionArea && (
+          {/* 折叠态不渲染：rail（WorkspaceSidebarCollapsedRail）已是唯一的展开入口，
+              两个入口同时在场会重叠且位置不齐。展开态才显示（此时它是品牌标识 +
+              折叠入口，位置在侧栏左缘，与 rail 不共存）。 */}
+          {usesCustomCaptionArea && isSidebarVisible && (
             <DesktopTopOverlayActionButton
               title={toggleSidebarTitle}
               shortcut={toggleSidebarShortcutLabel}
@@ -149,7 +167,7 @@ export function DesktopTopOverlay({
             </DesktopTopOverlayActionButton>
           )}
 
-          {isMacDesktop && (
+          {isMacDesktop && isSidebarVisible && (
             <DesktopTopOverlayActionButton
               title={toggleSidebarTitle}
               shortcut={toggleSidebarShortcutLabel}
