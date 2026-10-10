@@ -258,8 +258,16 @@ async function runRuntimeCommand(
           command,
           foregroundExecution.controller.signal,
         );
-        // 编排已在首条消息时启动过；后续消息走主会话（操舵）。这里不再重复触发
-        // 编排循环——图变由子代理完成时经 notify 驱动，不依赖用户消息。
+        // 后续消息：主会话（编排模式下是操舵身份）先响应，随后**续跑编排**。
+        // 编排是长程可恢复循环——它会在有排队用户输入时主动让出控制权
+        // （见 orchestration-loop 的 yield 条件），因此必须在每个 turn 收尾后
+        // 重新进入，否则一次让位就永久停摆。图的后续变化由子代理完成时经 notify
+        // 驱动，不依赖用户消息。
+        await runPostPromptPentestOrchestration.call(this, {
+          taskStatement: command.input,
+          abortSignal: foregroundExecution.controller.signal,
+          traceContext: command.traceContext,
+        });
         command.resolve(continuationResult ?? result);
       } finally {
         this.runtimeCommandQueue.clearCancelPending(command.id);

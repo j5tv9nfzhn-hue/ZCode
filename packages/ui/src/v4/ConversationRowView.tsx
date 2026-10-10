@@ -28,6 +28,7 @@ import {
   TID_V4_FORK,
   TID_V4_ROW,
   TID_V4_ROW_ATTACHMENTS,
+  TID_V4_SUBAGENT_OPEN_SIDE_PANE,
   testId,
 } from "@zcode/shared";
 import type {
@@ -88,6 +89,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useOptionalPlatform } from "@/hooks/usePlatform.js";
 import { reportAppTelemetryEvent } from "@/lib/appTelemetry.js";
 import { runUserAction, runUserActionAsync } from "@/lib/userActionTelemetry.js";
+import { openSubagentSessionFromSummary } from "@/v4/ConversationAgentToolCallRow.js";
 import { logger } from "@/logger.js";
 import type { AssistantPreviewCard } from "@/lib/assistantPreviewCards.js";
 import {
@@ -2071,18 +2073,74 @@ const ToolCallRowView = memo(function ToolCallRowView({
   );
 });
 
-const SubagentRowView = memo(function SubagentRowView({ row }: { row: SubagentRow }) {
-  // subagent 行已经和 Agent/Task 工具行配对渲染；裸行只保留异常兜底摘要，
-  // 避免再生成一个“子会话”卡片或第二套下钻入口。
+/**
+ * 未配对的 subagent 行。
+ *
+ * 两种来源：
+ *   1. **编排子代理**（goals/planner/worker）——它们是 subagentPort.launch() 直接派发，
+ *      不经过 Agent 工具，因此永远配不上 Agent 工具调用行。这是**正常路径**，不是异常。
+ *   2. 历史遗留/无 parentToolCallId 的裸行。
+ *
+ * 两种情况都必须可点击打开右侧子会话——childSessionId 是真实的，UI 不利用就是功能缺失。
+ * 旧实现把它当成「异常兜底」只渲染一行纯文本，编排子代理因此全部失去下钻入口。
+ */
+const SubagentRowView = memo(function SubagentRowView({
+  row,
+  context,
+}: {
+  row: SubagentRow;
+  context: ConversationRowRenderContext;
+}) {
+  const childSessionId = row.childSessionId;
+  const title = row.summaryText.trim() || row.subagentType;
+  const canOpen =
+    Boolean(childSessionId) && Boolean(context.sessionId) && Boolean(context.onOpenSubagentSession);
+  const handleOpen = useCallback(() => {
+    if (!childSessionId) return;
+    runUserAction({
+      input: { featureId: "conversation.subagent", action: "open_side_pane", trigger: "button" },
+      operation: () =>
+        openSubagentSessionFromSummary({
+          childSessionId,
+          context,
+          subagentType: row.subagentType,
+          title,
+        }),
+      completed: { resultSource: "local_commit" },
+      failureStage: "subagent_open",
+    });
+  }, [childSessionId, context, row.subagentType, title]);
+
   const summary = (
     <>
       {row.subagentType} · {row.status}
       {row.summaryText ? ` — ${row.summaryText}` : ""}
     </>
   );
+
+  if (!canOpen) {
+    return (
+      <RowShell rowId={row.rowId}>
+        <div className="text-ui-sm text-[var(--color-foreground-subtle)]">{summary}</div>
+      </RowShell>
+    );
+  }
+
   return (
     <RowShell rowId={row.rowId}>
-      <div className="text-ui-sm text-[var(--color-foreground-subtle)]">{summary}</div>
+      <button
+        type="button"
+        onClick={handleOpen}
+        data-testid={
+          childSessionId ? testId(TID_V4_SUBAGENT_OPEN_SIDE_PANE, childSessionId) : undefined
+        }
+        className="flex w-full items-center gap-2 rounded-lg border border-card-border bg-card px-3 py-2 text-left transition-colors hover:bg-hover"
+      >
+        <ArrowRightLeftIcon className="size-4 shrink-0 text-foreground-subtle" aria-hidden="true" />
+        <div className="min-w-0 flex-1 text-ui-sm text-[var(--color-foreground-subtle)]">
+          {summary}
+        </div>
+      </button>
     </RowShell>
   );
 });
@@ -2159,7 +2217,7 @@ function ConversationRowViewImpl({
       }
       return <ToolCallRowView row={row} context={context} />;
     case "subagent":
-      return <SubagentRowView row={row} />;
+      return <SubagentRowView row={row} context={context} />;
     case "artifact":
       return <ArtifactRowView row={row} />;
     default:
