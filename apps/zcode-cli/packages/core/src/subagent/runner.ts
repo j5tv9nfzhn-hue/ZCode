@@ -1183,9 +1183,33 @@ async function runAgentToCompletion(
     totalDurationMs,
     ...(totalTokens === undefined ? {} : { totalTokens }),
     ...(usage === undefined ? {} : { usage }),
+    // 子 turn 的终止类型：编排器需要它区分「做完了」和「撞上限了」。
+    // childResult.events 里最后一个 TurnComplete 携带 resultType；没有则视为
+    // 未命中任何上限（success）。这里只做透传，不做判定。
+    ...resolveChildTerminalReason(childResult.events),
   };
 
   return { events: childResult.events, output };
+}
+
+/** 从子 turn 事件流里取终止类型，只认契约里声明过的上限档位。 */
+function resolveChildTerminalReason(
+  events: readonly SessionEvent[],
+): Pick<AgentCompletedOutput, "terminalReason"> {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.type !== SessionEventType.TurnComplete) continue;
+    const resultType = (event.payload as { resultType?: string }).resultType;
+    if (
+      resultType === "error_max_turns" ||
+      resultType === "error_max_budget" ||
+      resultType === "error_max_tool_calls"
+    ) {
+      return { terminalReason: resultType };
+    }
+    return { terminalReason: "success" };
+  }
+  return {};
 }
 
 function createSubagentActivityWatchdog(options: {

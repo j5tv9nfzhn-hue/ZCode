@@ -15,6 +15,7 @@ import {
 import { logger } from "@/logger.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Switch } from "@/components/ui/switch.js";
+import { Button } from "@/components/ui/button.js";
 import { ControlHintTooltip } from "@/ControlHintTooltip.js";
 import { isImeComposingKeyEvent } from "@/lib/imeComposition.js";
 import { resolvePendingProviderDraftSave, type ProviderDraftValues } from "./ProviderDraftSave.js";
@@ -26,11 +27,9 @@ import {
 } from "./ProviderCardSections.js";
 import { resolveModelProviderDisplayName } from "./constants.js";
 import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
-import { useIdleTrigger } from "./useIdleTrigger.js";
 import { useOptimisticReorder } from "./useOptimisticReorder.js";
 
 type ProviderNameEditKeyAction = "commit" | "cancel";
-type ProviderDraftCleanupAction = "commit" | "skip-delete";
 interface ProviderSaveNotificationTarget {
   modelId?: string;
   operation?: "delete";
@@ -43,14 +42,6 @@ function shouldApplyProviderSaveCompletion(
   completedRevision: number,
 ): boolean {
   return currentRevision === completedRevision;
-}
-
-function resolveProviderDraftCleanupAction({
-  deleteRequested,
-}: {
-  deleteRequested: boolean;
-}): ProviderDraftCleanupAction {
-  return deleteRequested ? "skip-delete" : "commit";
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<void> {
@@ -192,6 +183,11 @@ export function InlineEditableProviderCard({
   const [apiKeyValue, setApiKeyValue] = useState(getProviderFormApiKey(provider));
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [savingEnabled, setSavingEnabled] = useState(false);
+  /**
+   * 是否有未保存的草稿。手动保存模式下，唯一能触发写入的是「保存」按钮、
+   * 启用开关、测试连接与名称确认这几个显式动作；任何输入/失焦都不再自动落盘。
+   */
+  const [draftDirty, setDraftDirty] = useState(false);
   const authoritativeModels = useMemo(
     () => resolveVisibleProviderModelsForEdit(provider),
     [provider],
@@ -207,7 +203,6 @@ export function InlineEditableProviderCard({
   const nameEditProviderIdRef = useRef<string | null>(null);
   const technicalInputCompositionActiveRef = useRef(false);
   const deleteRequestedRef = useRef(false);
-  const selfSaveRequestedRef = useRef(false);
   const providerIdRef = useRef(provider.providerId);
   const dirtyProviderFieldsRef = useRef(new Set<keyof ProviderDraftValues>());
   const draftRevisionRef = useRef(0);
@@ -266,14 +261,13 @@ export function InlineEditableProviderCard({
 
   const markDraftDirty = useCallback((field: keyof ProviderDraftValues) => {
     dirtyProviderFieldsRef.current.add(field);
-    selfSaveRequestedRef.current = false;
     draftRevisionRef.current += 1;
+    setDraftDirty(true);
     saveNotificationRef.current.dismissFeedback(`provider-save:${providerIdRef.current}`);
   }, []);
 
   const runSaveOperation = useCallback(
     async (operation: () => Promise<void>, target: ProviderSaveNotificationTarget = {}) => {
-      selfSaveRequestedRef.current = true;
       const revision = draftRevisionRef.current + 1;
       draftRevisionRef.current = revision;
       const notification = saveNotificationRef.current;
@@ -326,7 +320,6 @@ export function InlineEditableProviderCard({
           state: "success",
         });
       } catch (error) {
-        selfSaveRequestedRef.current = false;
         if (shouldApplyProviderSaveCompletion(draftRevisionRef.current, revision)) {
           notification.showFeedback({
             key: dedupeKey,
@@ -400,11 +393,8 @@ export function InlineEditableProviderCard({
     [onSave, provider.providerId, runSaveOperation],
   );
 
-  const cancelIdleDraftSaveRef = useRef<() => void>(() => undefined);
-
   const commitPendingDraft = useCallback(
     async (reason: string, nameConfirmed = false): Promise<void> => {
-      cancelIdleDraftSaveRef.current();
       const nextProvider = resolvePendingProviderDraftSave({
         provider,
         draft: draftRef.current,
@@ -413,6 +403,8 @@ export function InlineEditableProviderCard({
         now: Date.now,
       });
       if (!nextProvider) {
+        // 无实际变化（或已与权威值同步）→ 清掉脏标记，保存按钮回到禁用态。
+        setDraftDirty(false);
         return;
       }
       const signature = JSON.stringify({
@@ -438,16 +430,8 @@ export function InlineEditableProviderCard({
     [provider, readOnlyEndpoints, saveProviderWithCleanupGuard],
   );
 
-  const idleDraftSave = useIdleTrigger(() => {
-    void commitPendingDraft("idle").catch(() => undefined);
-  });
-  cancelIdleDraftSaveRef.current = idleDraftSave.cancel;
-  const scheduleIdleDraftSave = idleDraftSave.schedule;
-  const cancelIdleDraftSave = idleDraftSave.cancel;
-
   const handleProviderEnabledChange = async (enabled: boolean) => {
     if (savingEnabled) return;
-    cancelIdleDraftSave();
     setSavingEnabled(true);
     // 同一次保存带上尚未提交的连接草稿，避免开关保存把刚输入的 Key 覆盖回旧值。
     const draft =
@@ -468,30 +452,15 @@ export function InlineEditableProviderCard({
 
   useEffect(() => {
     return () => {
-      cancelIdleDraftSave();
-      const cleanupAction = resolveProviderDraftCleanupAction({
-        deleteRequested: deleteRequestedRef.current,
+      // 手动保存模式：卸载（切换供应商 / 关闭详情）一律丢弃未保存的草稿，
+      // 不再做 cleanup 补保存——否则用户改了没点保存、切走又回来，发现被偷偷存了。
+      // 删除场景无需特判：草稿随组件销毁，不会把已删的 provider 重新创建。
+      logger.info("[ModelProviderSection] 卸载丢弃未保存草稿", {
+        providerId: provider.providerId,
+        draftDirty: dirtyProviderFieldsRef.current.size > 0,
       });
-      if (cleanupAction === "skip-delete") {
-        // 确认删除会触发详情卡片卸载；如果 cleanup 继续补保存草稿，
-        // 被删除的 provider 会在 delete 后又被 save 重新创建。
-        logger.info("[ModelProviderSection] 删除中的供应商跳过 cleanup 草稿保存", {
-          providerId: provider.providerId,
-        });
-        return;
-      }
-      if (selfSaveRequestedRef.current) {
-        selfSaveRequestedRef.current = false;
-        // 模型编辑会先保存新的有效模型列表，随后父层乐观更新会触发本组件 cleanup。
-        // 此时如果再用旧草稿补保存，会覆盖刚提交的模型列表。
-        logger.info("[ModelProviderSection] 内部保存触发的刷新跳过 cleanup 草稿保存", {
-          providerId: provider.providerId,
-        });
-        return;
-      }
-      void commitPendingDraft("cleanup").catch(() => undefined);
     };
-  }, [cancelIdleDraftSave, commitPendingDraft, provider.providerId]);
+  }, [provider.providerId]);
 
   const handleNameValueChange = useCallback(
     (value: string) => {
@@ -507,9 +476,8 @@ export function InlineEditableProviderCard({
       markDraftDirty("baseUrlValue");
       draftRef.current.baseUrlValue = value;
       setBaseUrlValue(value);
-      scheduleIdleDraftSave();
     },
-    [markDraftDirty, scheduleIdleDraftSave],
+    [markDraftDirty],
   );
 
   const handleApiKeyValueChange = useCallback(
@@ -517,9 +485,8 @@ export function InlineEditableProviderCard({
       markDraftDirty("apiKeyValue");
       draftRef.current.apiKeyValue = value;
       setApiKeyValue(value);
-      scheduleIdleDraftSave();
     },
-    [markDraftDirty, scheduleIdleDraftSave],
+    [markDraftDirty],
   );
 
   const handleNameBlur = useCallback(() => {
@@ -527,16 +494,16 @@ export function InlineEditableProviderCard({
     if (nameEditProviderIdRef.current !== provider.providerId) return;
     nameEditProviderIdRef.current = null;
     setEditingName(false);
+    // 手动保存模式：名称确认只落本地草稿，等用户点「保存」才写入；
+    // 空值回退到当前显示名并清除脏标记。
     const trimmed = draftRef.current.nameValue.trim();
     const currentLabel = getProviderFormLabel(provider);
-    if (trimmed && trimmed !== currentLabel) {
-      void commitPendingDraft("name-blur", true).catch(() => undefined);
-    } else {
+    if (!trimmed || trimmed === currentLabel) {
       draftRef.current.nameValue = currentLabel;
       setNameValue(currentLabel);
       dirtyProviderFieldsRef.current.delete("nameValue");
     }
-  }, [commitPendingDraft, provider]);
+  }, [provider]);
 
   const handleNameKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
@@ -569,24 +536,14 @@ export function InlineEditableProviderCard({
     requestAnimationFrame(() => nameInputRef.current?.focus());
   }, [provider.providerId]);
 
-  const saveConnection = useCallback(
-    () => void commitPendingDraft("connection-blur").catch(() => undefined),
-    [commitPendingDraft],
-  );
-
   const handleApiFormatChange = useCallback(
     (value: ProviderApiType) => {
       markDraftDirty("apiFormat");
       draftRef.current.apiFormat = value;
       setApiFormat(value);
-      void commitPendingDraft("api-format-change").catch(() => undefined);
     },
-    [commitPendingDraft, markDraftDirty],
+    [markDraftDirty],
   );
-
-  const handleApiKeyBlur = useCallback(() => {
-    void commitPendingDraft("api-key-blur").catch(() => undefined);
-  }, [commitPendingDraft]);
 
   const handleTextCommitKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter") {
@@ -664,6 +621,33 @@ export function InlineEditableProviderCard({
     },
     [models, onSavePersonalModelDraft, provider.providerId, runSaveOperation],
   );
+
+  /** 手动保存：提交卡片内所有未保存的草稿字段（名称、连接类型、地址、Key）。 */
+  const handleManualSave = useCallback(() => {
+    void commitPendingDraft("manual-save", true)
+      .then(() => setDraftDirty(false))
+      .catch(() => undefined);
+  }, [commitPendingDraft]);
+
+  /** 手动重置：丢弃全部草稿，回退到当前权威 provider 值。 */
+  const handleManualReset = useCallback(() => {
+    const resolvedApiFormat = provider.config.api?.type ?? "anthropic-messages";
+    const resolvedBaseUrl = provider.config.api?.baseUrl ?? "";
+    const resolvedApiKey = getProviderFormApiKey(provider);
+    const resolvedLabel = getProviderFormLabel(provider);
+    draftRef.current = {
+      nameValue: resolvedLabel,
+      apiFormat: resolvedApiFormat,
+      baseUrlValue: resolvedBaseUrl,
+      apiKeyValue: resolvedApiKey,
+    };
+    setNameValue(resolvedLabel);
+    setApiFormat(resolvedApiFormat);
+    setBaseUrlValue(resolvedBaseUrl);
+    setApiKeyValue(resolvedApiKey);
+    dirtyProviderFieldsRef.current.clear();
+    setDraftDirty(false);
+  }, [provider]);
 
   const handleDeleteModel = useCallback(
     (modelId: string) => {
@@ -817,7 +801,6 @@ export function InlineEditableProviderCard({
             baseUrlValue={baseUrlValue}
             onApiFormatChange={handleApiFormatChange}
             onBaseUrlChange={handleBaseUrlValueChange}
-            onBaseUrlBlur={saveConnection}
             onBaseUrlKeyDown={handleTextCommitKeyDown}
             onBaseUrlCompositionStart={handleTechnicalInputCompositionStart}
             onBaseUrlCompositionEnd={handleTechnicalInputCompositionEnd}
@@ -831,13 +814,36 @@ export function InlineEditableProviderCard({
             presetApiKeyUrl={presetApiKeyUrl}
             onOpenPresetApiKey={onOpenPresetApiKey}
             onApiKeyChange={handleApiKeyValueChange}
-            onApiKeyBlur={handleApiKeyBlur}
             onApiKeyKeyDown={handleTextCommitKeyDown}
             onApiKeyCompositionStart={handleTechnicalInputCompositionStart}
             onApiKeyCompositionEnd={handleTechnicalInputCompositionEnd}
             onToggleApiKeyVisibility={() => setApiKeyVisible((value) => !value)}
           />
         ) : null}
+
+        {isAccountProvider ? null : (
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="lg"
+              disabled={!draftDirty}
+              data-testid="model-provider-save-button"
+              onClick={handleManualSave}
+            >
+              {intl.formatMessage({ id: "settings.modelProvider.saveDraft" })}
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              disabled={!draftDirty}
+              data-testid="model-provider-reset-button"
+              onClick={handleManualReset}
+            >
+              {intl.formatMessage({ id: "settings.modelProvider.resetDraft" })}
+            </Button>
+          </div>
+        )}
 
         <ProviderModelsSection
           // 不同 Provider 可以有同名模型；不能复用上一供应商的打开中草稿和版本。

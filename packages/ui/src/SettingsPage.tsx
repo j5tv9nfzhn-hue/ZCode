@@ -683,13 +683,8 @@ export function SettingsPage({
   }, [sharedSettings?.recentProjects, workspaceTabs]);
   const memoryEnabled = sharedSettings?.memoryEnabled === true;
   const customSystemPrompt = sharedSettings?.customSystemPrompt ?? "";
-  const neutralTaskProjection = sharedSettings?.neutralTaskProjection === true;
   const assistantCoTPrefillEnabled = sharedSettings?.assistantCoTPrefillEnabled === true;
   const unfilteredFullOutputEnabled = sharedSettings?.unfilteredFullOutputEnabled === true;
-  const projectionDiffCaptureEnabled = sharedSettings?.neutralTaskProjectionDiffCapture === true;
-  const projectionDiffCaptureAssistantEnabled =
-    sharedSettings?.neutralTaskProjectionDiffCaptureAssistant === true;
-  const neutralTaskTargetAllowlist = sharedSettings?.neutralTaskTargetAllowlist ?? [];
   const pentestOrchestrationEnabled = sharedSettings?.pentestOrchestrationEnabled === true;
   const nativeSearchEnhancementsEnabled = sharedSettings?.nativeSearchEnhancementsEnabled !== false;
   const askUserQuestionAutoResolutionEnabled =
@@ -972,21 +967,6 @@ export function SettingsPage({
     },
     [updateSharedSettings],
   );
-  const handleNeutralTaskProjectionChange = useCallback(
-    async (enabled: boolean) => {
-      await runSettingsActionAsync({
-        featureId: "settings.system_prompt",
-        action: "toggle_neutral_task_projection",
-        trigger: "switch",
-        operation: () => updateSharedSettings({ neutralTaskProjection: enabled }),
-        completed: {
-          resultSource: "shared_settings",
-          stateAfter: enabled ? "enabled" : "disabled",
-        },
-      });
-    },
-    [updateSharedSettings],
-  );
   const handleAssistantCoTPrefillEnabledChange = useCallback(
     async (enabled: boolean) => {
       await runSettingsActionAsync({
@@ -1028,51 +1008,6 @@ export function SettingsPage({
           resultSource: "shared_settings",
           stateAfter: enabled ? "enabled" : "disabled",
         },
-      });
-    },
-    [updateSharedSettings],
-  );
-  const handleProjectionDiffCaptureChange = useCallback(
-    async (enabled: boolean) => {
-      await runSettingsActionAsync({
-        featureId: "settings.system_prompt",
-        action: "toggle_projection_diff_capture",
-        trigger: "switch",
-        operation: () => updateSharedSettings({ neutralTaskProjectionDiffCapture: enabled }),
-        completed: {
-          resultSource: "shared_settings",
-          stateAfter: enabled ? "enabled" : "disabled",
-        },
-      });
-    },
-    [updateSharedSettings],
-  );
-  const handleProjectionDiffCaptureAssistantChange = useCallback(
-    async (enabled: boolean) => {
-      await runSettingsActionAsync({
-        featureId: "settings.system_prompt",
-        action: "toggle_projection_diff_capture_assistant",
-        trigger: "switch",
-        operation: () =>
-          updateSharedSettings({ neutralTaskProjectionDiffCaptureAssistant: enabled }),
-        completed: {
-          resultSource: "shared_settings",
-          stateAfter: enabled ? "enabled" : "disabled",
-        },
-      });
-    },
-    [updateSharedSettings],
-  );
-  const handleNeutralTaskTargetAllowlistSave = useCallback(
-    async (entries: readonly string[]) => {
-      // 入参已是 UI 侧清洗后的归一结果；设置层会用同一份 shared 判据再洗一次
-      // （远程 Host 可能不经过本机 UI，两侧都要能兜住）。
-      await runSettingsActionAsync({
-        featureId: "settings.system_prompt",
-        action: "save_neutral_task_target_allowlist",
-        trigger: "button",
-        operation: () => updateSharedSettings({ neutralTaskTargetAllowlist: [...entries] }),
-        completed: { resultSource: "shared_settings" },
       });
     },
     [updateSharedSettings],
@@ -1966,9 +1901,7 @@ export function SettingsPage({
                         ) : activeSection === "systemPrompt" ? (
                           <SystemPromptSettingsSection
                             customSystemPrompt={customSystemPrompt}
-                            neutralTaskProjection={neutralTaskProjection}
                             onCustomSystemPromptSave={handleCustomSystemPromptSave}
-                            onNeutralTaskProjectionChange={handleNeutralTaskProjectionChange}
                             onAssistantCoTPrefillEnabledChange={
                               handleAssistantCoTPrefillEnabledChange
                             }
@@ -1977,26 +1910,14 @@ export function SettingsPage({
                         ) : activeSection === "ctfConsole" ? (
                           <CtfConsoleSection
                             assistantCoTPrefillEnabled={assistantCoTPrefillEnabled}
-                            neutralTaskProjectionEnabled={neutralTaskProjection}
                             unfilteredFullOutputEnabled={unfilteredFullOutputEnabled}
-                            projectionDiffCaptureEnabled={projectionDiffCaptureEnabled}
-                            projectionDiffCaptureAssistantEnabled={
-                              projectionDiffCaptureAssistantEnabled
-                            }
-                            targetAllowlist={neutralTaskTargetAllowlist}
                             pentestOrchestrationEnabled={pentestOrchestrationEnabled}
                             workspaceIdentity={activeWorkspaceIdentity ?? undefined}
                             workspacePath={activeWorkspacePath ?? undefined}
                             onAssistantCoTPrefillEnabledChange={
                               handleAssistantCoTPrefillEnabledChange
                             }
-                            onNeutralTaskProjectionChange={handleNeutralTaskProjectionChange}
                             onUnfilteredFullOutputChange={handleUnfilteredFullOutputChange}
-                            onProjectionDiffCaptureChange={handleProjectionDiffCaptureChange}
-                            onProjectionDiffCaptureAssistantChange={
-                              handleProjectionDiffCaptureAssistantChange
-                            }
-                            onTargetAllowlistSave={handleNeutralTaskTargetAllowlistSave}
                             onPentestOrchestrationChange={handlePentestOrchestrationChange}
                           />
                         ) : activeSection === "plugin" ? (

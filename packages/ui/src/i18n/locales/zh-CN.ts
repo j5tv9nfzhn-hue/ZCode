@@ -2005,9 +2005,6 @@ const zhCN: Record<string, string> = {
     "留空使用内置提示词。例如要求模型先执行再汇报、任务分解后逐步推进。",
   "settings.systemPrompt.save": "保存",
   "settings.systemPrompt.reset": "恢复默认",
-  "settings.systemPrompt.neutralProjection.label": "中性任务投影",
-  "settings.systemPrompt.neutralProjection.description":
-    "开启后，发送给模型的请求会先做中性化：你的指令原文保留，只在其前追加身份与授权姿态，工具名改为中性表述，历史与工具执行保持原样。适合长时间多阶段的任务执行。",
   "settings.systemPrompt.cotPrefill.label": "助手思考预置",
   "settings.systemPrompt.cotPrefill.description":
     "开启后，发送请求前在消息列表末尾预置一条助手思考起始（reasoning 块 + 过渡语），让模型以「已开始执行」的姿态续写。对自有可控 provider 有效，默认关闭。",
@@ -2017,54 +2014,12 @@ const zhCN: Record<string, string> = {
   "settings.ctfConsole.unfilteredOutput.label": "完整输出（不截断）",
   "settings.ctfConsole.unfilteredOutput.description":
     "开启后按模型自身声明的上限下发 maxOutputTokens，不受本地上下文预算截断。该字段必须下发（provider 侧为必填校验），省略会导致请求被拒。",
-  "settings.ctfConsole.projectionDiffCapture.label": "投影 diff 捕获（调试）",
-  "settings.ctfConsole.projectionDiffCapture.description":
-    "记录每条叙事文本的「原文 → 投影后」配对到内存环形缓冲，实时展示。默认关闭；仅在投影开启时可用。记录内容含用户原始输入，不写入聊天记录与落盘历史。",
-  "settings.ctfConsole.projectionDiffCaptureAssistant.label": "同时捕获 assistant 侧",
-  "settings.ctfConsole.projectionDiffCaptureAssistant.description":
-    "assistant 侧只做词表替换，diff 量大且不指向「句式重构是否生效」这一核心问题，默认不记录。",
-  "settings.ctfConsole.projectionDiff.title": "投影 diff",
-  "settings.ctfConsole.projectionDiff.disabled": "未开启捕获",
-  "settings.ctfConsole.projectionDiff.summary":
-    "检查 {inspected} 条 / 变更 {changed} 条 / 环形淘汰 {evicted} 条",
-  "settings.ctfConsole.projectionDiff.refresh": "刷新",
-  "settings.ctfConsole.projectionDiff.clear": "清空视图",
-  "settings.ctfConsole.projectionDiff.empty": "暂无 diff。开启捕获后发送一条消息即可观察。",
-  "settings.ctfConsole.projectionDiff.truncated": "已截断（原文 {length} 字）",
-  "settings.ctfConsole.projectionDiff.privacyWarning":
-    "以下内容含用户原始输入，仅存在于内存、不写入聊天记录与落盘历史。截图与外传前请自行确认合规。",
-  "settings.ctfConsole.probe.title": "投影预览（本地，不发出任何请求）",
-  "settings.ctfConsole.probe.disclaimer":
-    "输入前请务必慎思权重：目标选择、频率与深度将直接影响真实公网系统。确认由你自行判断并承担全部责任。",
-  "settings.ctfConsole.probe.targetLabel": "目标地址（域名 / URL / IP）",
-  "settings.ctfConsole.probe.targetPlaceholder": "example.com",
-  "settings.ctfConsole.probe.instructionLabel": "测试指令（支持 {TARGET} 占位）",
-  "settings.ctfConsole.probe.preview": "生成请求投影预览",
-  "settings.ctfConsole.probe.copyOriginal": "复制原始指令",
-  "settings.ctfConsole.probe.previewLabel": "模型将收到的指令（与运行时同一份投影逻辑）",
-  "settings.ctfConsole.probe.scopeMatched":
-    "目标已登记在授权作用域内：请求中已声明该事实，你的归属信息不外泄。",
-  "settings.ctfConsole.probe.lexicalTriggers":
-    "请求中含攻击语义词：{terms}（能力保持模式不删除它们，由你判断测试权限）",
-  "settings.ctfConsole.allowlist.label": "授权作用域登记表",
-  "settings.ctfConsole.allowlist.description":
-    "一行一条，只认确切 IP 或完整主机名（其子域自动命中）。登记即断言你已获得该目标的测试授权，权限责任由你承担；命中时请求会声明作用域事实，你的归属信息不外泄。未登记目标同样原文发送，但不声明任何授权。通配符、网段（CIDR）、疑似凭据与中文描述登记时即丢弃。",
-  "settings.ctfConsole.allowlist.placeholder":
-    "203.0.113.10\nlab.example.com\nhttps://api.example.com",
-  "settings.ctfConsole.allowlist.save": "保存登记表",
-  "settings.ctfConsole.allowlist.dropped": "以下写法不是确切的主机名 / IP，已忽略：{entries}",
+  "settings.modelProvider.saveDraft": "保存",
+  "settings.modelProvider.resetDraft": "重置",
   "settings.ctfConsole.pentestOrchestration.label": "渗透编排",
   "settings.ctfConsole.pentestOrchestration.description":
     "开启后注册结构化编排工具（record_fact / report_finding / add_intent / insert_assets / …）与三个编排子代理（goals / planner / worker）。默认关闭，仅新建会话生效。",
-  "settings.ctfConsole.log.title": "实时日志",
-  "settings.ctfConsole.log.live": "会话事件已连接",
-  "settings.ctfConsole.log.offline": "离线（仅控制台本地事件）",
-  "settings.ctfConsole.log.search": "搜索日志",
-  "settings.ctfConsole.log.filter": "按级别过滤",
-  "settings.ctfConsole.log.allLevels": "全部",
-  "settings.ctfConsole.log.copy": "复制",
-  "settings.ctfConsole.log.clear": "清空",
-  "settings.ctfConsole.log.empty": "暂无日志事件",
+
   "settings.ctfConsole.coverage.title": "渗透覆盖度",
   "settings.ctfConsole.coverage.description":
     "资产覆盖度是整条编排工作流的验收底线：只有「已测 / 登记总数」能证明目标真的被测过，模型自述有进展不算数。",

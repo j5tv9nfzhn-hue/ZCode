@@ -13,28 +13,15 @@ CTF Console 是本自维护分支在设置页新增的独立分区。它有三�
 
 ## 它做什么
 
-### 六个开关
+### 三个开关
 
 按新建会话固定，**默认全部关闭**，缺席即关闭（fail-closed）。
 
-| 开关                     | 设置项                                      | 作用                                                              |
-| ------------------------ | ------------------------------------------- | ----------------------------------------------------------------- |
-| 中性任务投影             | `neutralTaskProjection`                     | 对叙事文本做中性化改写；其余文本只过词表层                        |
-| 思维链预填 Prefill       | `assistantCoTPrefillEnabled`                | 请求末尾追加 assistant 起始前缀，让模型在「已开始执行」预设下续写 |
-| 完整输出（不本地截断）   | `unfilteredFullOutputEnabled`               | 按模型自身声明的上限下发 `maxOutputTokens`                        |
-| 投影 diff 捕获（调试用） | `neutralTaskProjectionDiffCapture`          | 记录「原文 → 投影后」配对                                         |
-| 同时捕获 assistant 侧    | `neutralTaskProjectionDiffCaptureAssistant` | 把捕获范围扩到 assistant 输出                                     |
-| 渗透编排                 | `pentestOrchestrationEnabled`               | 注册结构化编排工具与三个编排子代理                                |
-
-后两级是**链式依赖**：投影 diff 捕获依赖投影总开关，assistant 侧捕获依赖投影 diff 捕获。上游未开启时下级开关处于禁用态，而不是「静默无效」。
-
-### 授权作用域登记表
-
-一个多行文本框，一行一条确切 IP 或完整主机名。
-
-- **登记即断言授权**：写入一条目标，意味着使用者声明自己有权测试它。归属不必是自有资产，责任在使用者。
-- **命中即注入作用域事实**：请求里会多一句「已登记在演练作用域内」。**未命中不声明任何授权**，也不删改用户词汇。
-- 清洗在保存时进行：通配符、网段、凭据样式字符串、中文口语描述一律丢弃。清洗与匹配是**同一个模块**（`packages/shared/src/neutral-task-scope.ts`）的两处调用点：`normalizeNeutralTaskTargetAllowlist` 负责写入侧兜底，匹配侧在同文件 `:121,134`。
+| 开关                   | 设置项                        | 作用                                                                        |
+| ---------------------- | ----------------------------- | --------------------------------------------------------------------------- |
+| 思维链预填 Prefill     | `assistantCoTPrefillEnabled`  | 请求末尾追加 assistant 起始前缀，让模型在「已开始执行」预设下续写           |
+| 完整输出（不本地截断） | `unfilteredFullOutputEnabled` | 按模型自身声明的上限下发 `maxOutputTokens`                                  |
+| 渗透编排               | `pentestOrchestrationEnabled` | 注册结构化编排工具与三个编排子代理，并把身份行换成无授权核验框架的 CTF 版本 |
 
 ### 编排与观测面板
 
@@ -55,15 +42,15 @@ CTF Console 是本自维护分支在设置页新增的独立分区。它有三�
 
 这六条不是实现细节，而是产品语义，改动即回归。
 
-### 1. 只在请求投影层生效
+### 1. 历史与文件永远保留原文
 
-改写发生在 `runModelTextRequest` 组装请求的那一刻。**canonical 历史、落盘 transcript、UI 展示、工作区文件一律保留原文** —— 你在界面上看到的、磁盘上存的，永远是你自己输入的原话。
+投影只发生在组装请求的那一刻。**canonical 历史、落盘 transcript、UI 展示、工作区文件一律保留原文** —— 你在界面上看到的、磁盘上存的，永远是你自己输入的原话。
 
-### 2. 不预设任务边界
+### 2. 授权判断不在模型职责内
 
-真实用户输入**逐字保留、不做任何删改**（`packages/shared/src/neutral-task-turn-input.ts:154` 只在其前追加姿态段落）。词表命中的攻击语义词**只作遥测、不触发改写**——删词会把攻击行为一起删掉（同文件 `:137-138`，即 §1.8 的次级失效）。改写只作用于 system / assistant / synthetic-user 文本。模板也**不替使用者定义任务范围**：不写死步骤、不指定方法、不暗示只做侦察、不劝模型输出报告。
+执行作用域由结构化状态（`po_scope` 表）承载——goals 阶段把任务点名的目标登记进去，后续执行者据此知道边界。**模型不需要核验授权**：身份行（`CTF_SECURITY_NOTICE`）刻意不含「需授权上下文」框架，避免模型把执行任务变成尽调任务（查 bounty、要求书面凭证）。
 
-> 第一版模板曾预设「三步只读验证」，模型把它读成「边界已定义的任务书」，于是自行声明不做绕过并把任务削窄。修掉后，同一句输入下边界声明从 1 次降为 0 次，工具调用从 9 增至 20。
+> 原请求投影路线的历史与教训见 [apps/zcode-cli/docs/neutral-task-mode.md](../apps/zcode-cli/docs/neutral-task-mode.md)。
 
 ### 3. 不改可执行载荷与真实观测
 
@@ -124,5 +111,5 @@ Provider 侧的参数校验是**必填路径**，`undefined` 会被判为非法�
 
 本功能及其全部代码为本自维护分支新增，**与上游 ZCode 官方产品无任何关联**：不使用官方账号体系、服务端点或分发渠道，不影响官方产品的任何策略、接口或服务，上游不认可、不背书、不维护本分支的任何改动。
 
-分支整体定位见 [README](../README.md)，风险边界见 [NOTICE.md](../NOTICE.md)，投影层技术细节与全部不变量见
-[apps/zcode-cli/docs/neutral-task-mode.md](../apps/zcode-cli/docs/neutral-task-mode.md)。
+分支整体定位见 [README](../README.md)，风险边界见 [NOTICE.md](../NOTICE.md)，编排层技术细节与全部不变量见
+[apps/zcode-cli/docs/pentest-orchestration.md](../apps/zcode-cli/docs/pentest-orchestration.md)。

@@ -2269,16 +2269,9 @@ export function createLocalServices(options: {
               ...(settings.customSystemPrompt
                 ? { customSystemPrompt: settings.customSystemPrompt }
                 : {}),
-              neutralTaskProjection: settings.neutralTaskProjection === true,
-              ...(settings.neutralTaskTargetAllowlist?.length
-                ? { neutralTaskTargetAllowlist: settings.neutralTaskTargetAllowlist }
-                : {}),
               pentestOrchestrationEnabled: settings.pentestOrchestrationEnabled === true,
               assistantCoTPrefillEnabled: settings.assistantCoTPrefillEnabled === true,
               unfilteredFullOutputEnabled: settings.unfilteredFullOutputEnabled === true,
-              neutralTaskProjectionDiffCapture: settings.neutralTaskProjectionDiffCapture === true,
-              neutralTaskProjectionDiffCaptureAssistant:
-                settings.neutralTaskProjectionDiffCaptureAssistant === true,
               // user-execution 只消费 Shell；共享默认策略是统一 result schema 的兼容占位，
               // 不会覆盖 runtime-materialization 阶段已经固定的 strategy。
               ...(scope === "user-execution" && settings.integratedTerminalShell

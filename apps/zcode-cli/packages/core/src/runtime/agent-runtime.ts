@@ -129,12 +129,6 @@ import { RuntimeTelemetryFacade } from "../telemetry/runtime-telemetry.js";
 import type { WorkspaceHookRuntimeAdmissionPort } from "../hooks/workspace-hook-runtime-admission.js";
 import { disposeNodeReplSession } from "../tool/handlers/node-repl.js";
 import { cloneModelSelection } from "./model-selection.js";
-import {
-  createProjectionDiffRecorderFromConfig,
-  type ProjectionDiffEntry,
-  type ProjectionDiffRecorder,
-  type ProjectionDiffSummary,
-} from "./helpers/neutral-task-projection-diff.js";
 
 // oxlint-disable typescript-eslint/no-unsafe-declaration-merging
 export class AgentRuntime {
@@ -150,11 +144,6 @@ export class AgentRuntime {
   private rootTraceContext: TraceContext;
   private logger?: Logger;
   private eventSinks = new Set<SessionEventSink>();
-  /**
-   * debug-only 投影 diff 环形缓冲（见 helpers/neutral-task-projection-diff.ts）。
-   * 实例级字段：随 runtime 回收，不跨 session 泄漏，也不构造 SessionEvent。
-   */
-  private readonly projectionDiffRecorder: ProjectionDiffRecorder;
   private now: () => Date;
   private isRemoteWorkspace: () => boolean;
   private registry: ToolRegistry;
@@ -279,12 +268,6 @@ export class AgentRuntime {
       this.eventSinks.add(deps.eventSink);
     }
     this.now = deps.now ?? (() => new Date());
-    // config 已在上方装配完成；diff 捕获是 session 级固定项，与投影同为
-    // 请求投影层策略，创建后不再随设置变化（见 spec §2 不变量 6）。
-    this.projectionDiffRecorder = createProjectionDiffRecorderFromConfig({
-      ...this.config,
-      now: () => (this.now?.() ?? new Date()).getTime(),
-    });
     this.isRemoteWorkspace = deps.isRemoteWorkspace ?? (() => false);
     this.modelFactory = deps.modelFactory;
     this.modelIoDir = deps.modelIoDir;
@@ -367,17 +350,6 @@ export interface AgentRuntime {
     selection: ExecutionShellSelection | (() => ExecutionShellSelection),
   ): boolean;
   getSessionShellSelection(): ExecutionShellSelection | undefined;
-  /**
-   * debug-only 投影 diff 快照：内存环形缓冲的内容 + 计数概览。
-   * 只被 `session/debug` 读取；不构造 SessionEvent，因此不进 transcript。
-   * 捕获开关关闭时返回空列表且 summary.enabled=false。
-   */
-  getNeutralTaskProjectionDiffs(): {
-    readonly entries: readonly ProjectionDiffEntry[];
-    readonly summary: ProjectionDiffSummary;
-  };
-  /** 清理投影 diff 缓冲（session 结束或用户手动清空）。 */
-  clearNeutralTaskProjectionDiffs(): void;
   /**
    * 编排态势快照（CTF Console 的覆盖度面板与图面板的数据源）。
    * 编排未开启时返回 undefined——调用方据此省略整个字段，而不是构造假快照。

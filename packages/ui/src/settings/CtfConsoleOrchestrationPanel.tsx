@@ -140,8 +140,17 @@ export function CtfConsoleOrchestrationPanel({
     );
   }
 
-  const metGoals = overview.goals.filter((goal) => goal.state === GOAL_MET_STATE);
-  const openGoals = overview.goals.filter((goal) => goal.state !== GOAL_MET_STATE);
+  const { metGoals, openGoals, sortedOpenIntents } = useMemo(() => {
+    if (!overview) {
+      return { metGoals: [], openGoals: [], sortedOpenIntents: [] };
+    }
+    return {
+      metGoals: overview.goals.filter((goal) => goal.state === GOAL_MET_STATE),
+      openGoals: overview.goals.filter((goal) => goal.state !== GOAL_MET_STATE),
+      // 排序只在快照变化时跑，不在每次 render 时重排。
+      sortedOpenIntents: [...overview.openIntents].sort((a, b) => b.priority - a.priority),
+    };
+  }, [overview]);
 
   return (
     <section
@@ -233,26 +242,24 @@ export function CtfConsoleOrchestrationPanel({
               })}
             />
           ) : (
-            [...overview.openIntents]
-              .sort((a, b) => b.priority - a.priority)
-              .map((intent) => (
-                <div key={`intent-${intent.id}`} className="text-ui-caption text-foreground">
+            sortedOpenIntents.map((intent) => (
+              <div key={`intent-${intent.id}`} className="text-ui-caption text-foreground">
+                <span className="text-foreground-subtle">
+                  #{intent.id} p{intent.priority}
+                </span>{" "}
+                {intent.summary}
+                {intent.assetIds.length > 0 ? (
                   <span className="text-foreground-subtle">
-                    #{intent.id} p{intent.priority}
-                  </span>{" "}
-                  {intent.summary}
-                  {intent.assetIds.length > 0 ? (
-                    <span className="text-foreground-subtle">
-                      {" "}
-                      ·{" "}
-                      {intl.formatMessage(
-                        { id: "settings.ctfConsole.orchestration.assetCount" },
-                        { count: intent.assetIds.length },
-                      )}
-                    </span>
-                  ) : null}
-                </div>
-              ))
+                    {" "}
+                    ·{" "}
+                    {intl.formatMessage(
+                      { id: "settings.ctfConsole.orchestration.assetCount" },
+                      { count: intent.assetIds.length },
+                    )}
+                  </span>
+                ) : null}
+              </div>
+            ))
           )}
         </OverviewGroup>
 
@@ -316,9 +323,8 @@ export function CtfConsoleOrchestrationPanel({
           )}
         </OverviewGroup>
 
-        {/* 固定警示：漏洞结论来自授权演练控制台。样式沿用 ProjectionDiffPanel
-            （warning 12% 底 + text-warning），不能用 text-warning-foreground——
-            那是给 bg-warning 实底徽标配的反色文字。 */}
+        {/* 固定警示：漏洞结论来自演练控制台。样式用 warning 12% 底 + text-warning，
+            不能用 text-warning-foreground——那是给 bg-warning 实底徽标配的反色文字。 */}
         <p
           className="mt-2 rounded-lg border border-warning/60 bg-[color-mix(in_oklab,var(--color-warning)_12%,transparent)] px-2 py-1 text-ui-caption text-warning"
           data-testid={TID_SETTINGS_CTF_ORCHESTRATION_PRIVACY}

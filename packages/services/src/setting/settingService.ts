@@ -11,7 +11,6 @@ import {
   appSettingsSchema,
   formatLogPrefix,
   formatZodError,
-  normalizeNeutralTaskTargetAllowlist,
 } from "@zcode/shared";
 import type { ISettingService } from "./setting.js";
 import { normalizeSettingsPatch } from "#src/setting/normalizeSettingsPatch.js";
@@ -323,17 +322,6 @@ export function createSettingServiceWithMigrations(): {
         // 这里把写入串行化，让每个补丁都基于上一次真正落盘后的最新状态继续合并。
         if (merged.recentProjects) {
           merged.recentProjects = [...new Set(merged.recentProjects)].slice(0, MAX_RECENT_PROJECTS);
-        }
-
-        // 授权作用域登记表（CTF Console）：写入侧统一清洗。静默丢弃模糊写法会被
-        // 误认为已授权，所以丢弃项必须打到服务日志——服务层没有 UI 回执通道，
-        // UI 侧（登记表编辑器）会同步做一次清洗并展示 dropped。
-        if (merged.neutralTaskTargetAllowlist) {
-          const normalized = normalizeNeutralTaskTargetAllowlist(merged.neutralTaskTargetAllowlist);
-          merged.neutralTaskTargetAllowlist = [...normalized.entries];
-          if (normalized.dropped.length > 0) {
-            log("neutralTaskTargetAllowlist dropped invalid entries:", normalized.dropped);
-          }
         }
 
         await writeSettings(

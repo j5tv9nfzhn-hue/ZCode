@@ -114,6 +114,13 @@ export function useModelSelectionServiceView(
       latestRevision = candidate.revision;
       hasReadyView = true;
       cancelRetry();
+      // 性能：revision 相同即视为同一份事实——Host 可能每次 getView/推送都返回
+      // 新对象引用，无条件 setOwned 会让所有依赖 modelSelectionView 的 memo 每轮失效
+      // （模型选择器菜单重建、rowContext 换引用→整条时间线重渲染）。
+      // 只有 revision 增长才提交新 state。
+      const previousView =
+        ownedRef.current.state.status === "ready" ? ownedRef.current.state.view : undefined;
+      if (previousView?.revision === candidate.revision) return;
       setOwned({
         service: normalizedService,
         enabled,

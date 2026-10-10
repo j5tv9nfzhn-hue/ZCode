@@ -20,7 +20,8 @@ export function ApiKeyInput({
   visible: boolean;
   readOnly?: boolean;
   onChange: (value: string) => void;
-  onBlur: () => void;
+  /** 手动保存模式下调用方不再传 onBlur；组件据此跳过 blur 绑定。 */
+  onBlur?: () => void;
   onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   onCompositionStart?: () => void;
   onCompositionEnd?: () => void;
@@ -47,7 +48,7 @@ export function ApiKeyInput({
             onChange(event.target.value);
           }
         }}
-        onBlur={readOnly ? undefined : onBlur}
+        onBlur={readOnly || !onBlur ? undefined : onBlur}
         onKeyDown={readOnly ? undefined : onKeyDown}
         onCompositionStart={readOnly ? undefined : onCompositionStart}
         onCompositionEnd={readOnly ? undefined : onCompositionEnd}

@@ -113,8 +113,16 @@ function summariesEqual(a: SessionSummary, b: SessionSummary): boolean {
     a.hasBackgroundWork === b.hasBackgroundWork &&
     // phase 翻转 / 结算 / 在跑子代理数变化永不被 conflation 吃掉；反之只改 node 的事件在这里判等
     // （真实系统里它仍会因 lastActivityAt 推进而产帧——那是活动事实，语义不变）。
-    JSON.stringify(a.workflowActivity ?? null) === JSON.stringify(b.workflowActivity ?? null) &&
-    JSON.stringify(a.pendingInteraction ?? null) === JSON.stringify(b.pendingInteraction ?? null) &&
+    //
+    // 性能：本函数在 upsertFromConversation 里被流式 token 级别的快照更新反复调用。
+    // 两个 JSON 字段先做引用早退——同源派生（都来自同一条 ConversationSnapshot）时
+    // 未变化的字段引用稳定，避免每次比较都序列化一份可能不小的对象。
+    (a.workflowActivity === b.workflowActivity ||
+      JSON.stringify(a.workflowActivity ?? null) ===
+        JSON.stringify(b.workflowActivity ?? null)) &&
+    (a.pendingInteraction === b.pendingInteraction ||
+      JSON.stringify(a.pendingInteraction ?? null) ===
+        JSON.stringify(b.pendingInteraction ?? null)) &&
     a.pendingInteractionSummary?.permissionCount === b.pendingInteractionSummary?.permissionCount &&
     a.pendingInteractionSummary?.userInputCount === b.pendingInteractionSummary?.userInputCount &&
     a.goalStatus === b.goalStatus &&

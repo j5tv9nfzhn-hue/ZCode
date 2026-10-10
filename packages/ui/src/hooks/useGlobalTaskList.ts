@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type {
   WindowHostControllerTaskListItem,
   ZCodeTaskListKind,
@@ -12,6 +13,10 @@ import { attachTaskListRowActivity } from "@/v4/taskListRowActivity.js";
 import { stabilizeTaskListItems } from "@/v4/taskListItemStabilization.js";
 import { getWindowControllerTaskListRegistry } from "@/v4/windowControllerTaskListRegistry.js";
 import type { WindowControllerTaskListVersion } from "@/v4/windowControllerTaskListRegistry.js";
+import {
+  buildWorkspaceTaskListVersionEntries,
+  joinWorkspaceTaskListVersionSignature,
+} from "@/hooks/workspaceTaskListRefreshSignatures.js";
 
 type GlobalTaskListItem = WindowHostControllerTaskListItem;
 
@@ -52,32 +57,45 @@ export function useGlobalTaskList(params: {
     controllerRegistry?.getRevision ?? zeroRevision,
     controllerRegistry?.getRevision ?? zeroRevision,
   );
-  const workspaceSignature = JSON.stringify(
-    params.workspaceTabs
-      .map(
-        (tab) => [tab.workspaceIdentity?.trim() || tab.workspacePath, tab.workspacePath] as const,
-      )
-      .sort(
-        ([leftKey, leftPath], [rightKey, rightPath]) =>
-          leftKey.localeCompare(rightKey) || leftPath.localeCompare(rightPath),
-      ),
+  // 这两个签名只在依赖数组里用（判 workspaceTabs 是否实质变化），不参与对外契约。
+  // 原先在 render 期直接执行「map + sort + 整数组 JSON.stringify」，每次父组件 render 都跑；
+  // 改为 useMemo 缓存 + 分隔符拼接（避免 JSON 序列化开销）。分隔符选 `\u0000`
+  // 与 joinWorkspaceTaskListVersionSignature 一致：workspacePath 可能含任意可打印字符，
+  // 控制字符不出现在合法路径里。
+  const workspaceSignature = useMemo(
+    () =>
+      params.workspaceTabs
+        .map(
+          (tab) => [tab.workspaceIdentity?.trim() || tab.workspacePath, tab.workspacePath] as const,
+        )
+        .sort(
+          ([leftKey, leftPath], [rightKey, rightPath]) =>
+            leftKey.localeCompare(rightKey) || leftPath.localeCompare(rightPath),
+        )
+        .map(([key, path]) => `${key}\u0000${path}`)
+        .join("\u0001"),
+    [params.workspaceTabs],
   );
-  const workspaceSourceGenerationSignature = JSON.stringify(
-    params.workspaceTabs
-      .map(
-        (tab) =>
-          [
-            tab.workspaceIdentity?.trim() || tab.workspacePath,
-            tab.workspacePath,
-            tab.remoteSessionId?.trim() || null,
-          ] as const,
-      )
-      .sort(
-        ([leftKey, leftPath, leftSession], [rightKey, rightPath, rightSession]) =>
-          leftKey.localeCompare(rightKey) ||
-          leftPath.localeCompare(rightPath) ||
-          (leftSession ?? "").localeCompare(rightSession ?? ""),
-      ),
+  const workspaceSourceGenerationSignature = useMemo(
+    () =>
+      params.workspaceTabs
+        .map(
+          (tab) =>
+            [
+              tab.workspaceIdentity?.trim() || tab.workspacePath,
+              tab.workspacePath,
+              tab.remoteSessionId?.trim() || "",
+            ] as const,
+        )
+        .sort(
+          ([leftKey, leftPath, leftSession], [rightKey, rightPath, rightSession]) =>
+            leftKey.localeCompare(rightKey) ||
+            leftPath.localeCompare(rightPath) ||
+            leftSession.localeCompare(rightSession),
+        )
+        .map(([key, path, session]) => `${key}\u0000${path}\u0000${session}`)
+        .join("\u0001"),
+    [params.workspaceTabs],
   );
   const workspaceScopes = useMemo(
     () => buildWorkspaceScopes(params.workspaceTabs),
@@ -85,10 +103,13 @@ export function useGlobalTaskList(params: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [workspaceSignature],
   );
-  const taskListVersionSignature = useZCodeSessionStore((state) =>
-    JSON.stringify(
-      params.workspaceTabs
-        .map((tab) => {
+  // useShallow + 原始字符串条目：selector 每次 store 提交都会跑，在里面 JSON.stringify
+  // 会把「选择器求值」变成一次全量序列化。旧实现在高频 activity 帧下是明确的卡顿点。
+  // 与 useWorkspaceTaskLists 同一模式（该处已是正确写法）。
+  const taskListVersionEntries = useZCodeSessionStore(
+    useShallow((state) =>
+      buildWorkspaceTaskListVersionEntries(
+        params.workspaceTabs.map((tab) => {
           const workspace = selectWorkspaceZCodeState(
             state,
             tab.workspacePath,
@@ -98,9 +119,13 @@ export function useGlobalTaskList(params: {
             tab.workspaceIdentity?.trim() || tab.workspacePath,
             workspace.taskListVersion,
           ] as const;
-        })
-        .sort(([left], [right]) => left.localeCompare(right)),
+        }),
+      ),
     ),
+  );
+  const taskListVersionSignature = useMemo(
+    () => joinWorkspaceTaskListVersionSignature(taskListVersionEntries),
+    [taskListVersionEntries],
   );
   const [items, setItems] = useState<GlobalTaskListItem[]>([]);
   const itemsRef = useRef<GlobalTaskListItem[]>(items);

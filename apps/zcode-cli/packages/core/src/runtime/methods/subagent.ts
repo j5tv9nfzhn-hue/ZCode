@@ -266,7 +266,13 @@ export function createDefaultSubagentPort(
             ...(agentsMdInstructions ? { userInstructions: agentsMdInstructions } : {}),
           },
           agentName: `zcode-${request.agentType}`,
-          maxTurns: request.maxTurns ?? this.config.subagents?.maxTurns ?? 4,
+          // 只在 profile / 会话配置显式给了上限时才注入：缺省 undefined 表示不设限。
+          // 之前这里有 `?? 4` 兜底，但 maxTurns 在 loop 里从未被消费（死配置），
+          // 该兜底一直没生效；现在 loop 开始真正执行上限，保留 4 会把所有未标
+          // maxTurns 的子代理（含 general-purpose）一并砍到 4 轮，属行为回归。
+          ...(resolveSubagentMaxTurns(request, this.config) === undefined
+            ? {}
+            : { maxTurns: resolveSubagentMaxTurns(request, this.config) }),
           parentSessionId: this.sessionId,
           taskType: "subagent_child",
           // 动态工作流灰度门必须结构性继承：
@@ -319,6 +325,13 @@ export function createDefaultSubagentPort(
           toolScheduler: deps.toolScheduler ?? defaultScheduler,
           executionPort: deps.executionPort,
           fileSystemPort: deps.fileSystemPort,
+          // 编排产物工具（record_fact / report_finding / insert_assets / ...）的门控端口。
+          // **必须**继承父 runtime 的同一份：端口按 task 绑定（closure 捕获主会话 id），
+          // 注入后 worker 的产物才落到主会话探索图——与上游一致（ARTEX worker.go 用
+          // 主 task 的 ExplorationStore + SetTaskID(taskID)）。缺了这一行，子 runtime
+          // 的工具注册门（runtime-tools.ts 的 includePentestOrchestration）为假，
+          // worker 拿不到任何产物工具，编排跑完探索图仍是空的。
+          pentestOrchestrationPort: this.pentestOrchestrationPort,
           // Explore 子运行时会暴露 WebFetch，但之前没有继承主 runtime 的
           // HTTP client port，导致工具在真正发请求前抛出配置错误，而不是网络请求失败。
           httpClientPort: deps.httpClientPort,
@@ -485,6 +498,18 @@ function resolveSubagentPermissionMode(
     default:
       return parentMode;
   }
+}
+
+/**
+ * 子代理的轮次上限：profile 显式值优先，其次会话级配置，都没有则不设限（undefined）。
+ * 提取成函数是为了让调用点能先判空再决定是否展开键——避免 `...x ?? y` 的运算符
+ * 优先级陷阱（展开先于比较），也让"没有上限"与"上限为 0"在类型上互斥。
+ */
+function resolveSubagentMaxTurns(
+  request: ExploreSubagentRuntimeRequest,
+  config: AgentRuntimeInternal["config"],
+): number | undefined {
+  return request.maxTurns ?? config.subagents?.maxTurns;
 }
 
 function resolveSubagentToolAllowlist(

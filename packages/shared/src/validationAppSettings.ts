@@ -463,17 +463,9 @@ const appSettingsObjectSchema = z.object({
   proactiveSuggestionsEnabled: z.boolean().optional(),
   memoryEnabled: z.boolean().default(false),
   customSystemPrompt: nonEmptyStringSchema.optional(),
-  neutralTaskProjection: z.boolean().default(false),
-  /**
-   * 授权作用域登记表：写入侧只做类型校验；逐条清洗（wildcard/网段/凭据丢弃、
-   * 大小写归一、限量）在 settingService.update 用 shared 归一函数完成并回报 dropped。
-   */
-  neutralTaskTargetAllowlist: z.array(z.string()).default([]),
   pentestOrchestrationEnabled: z.boolean().default(false),
   assistantCoTPrefillEnabled: z.boolean().default(false),
   unfilteredFullOutputEnabled: z.boolean().default(false),
-  neutralTaskProjectionDiffCapture: z.boolean().default(false),
-  neutralTaskProjectionDiffCaptureAssistant: z.boolean().default(false),
 
   lastWorkspaceSession: z.array(appWorkspaceSessionEntrySchema).default([]),
   lastActiveTabIndex: z.number().int().nonnegative().default(0),
@@ -561,13 +553,9 @@ export const appSettingsPatchSchema = z.object({
   proactiveSuggestionsEnabled: z.boolean().optional(),
   memoryEnabled: z.boolean().optional(),
   customSystemPrompt: nonEmptyStringSchema.optional(),
-  neutralTaskProjection: z.boolean().optional(),
-  neutralTaskTargetAllowlist: z.array(z.string()).optional(),
   pentestOrchestrationEnabled: z.boolean().optional(),
   assistantCoTPrefillEnabled: z.boolean().optional(),
   unfilteredFullOutputEnabled: z.boolean().optional(),
-  neutralTaskProjectionDiffCapture: z.boolean().optional(),
-  neutralTaskProjectionDiffCaptureAssistant: z.boolean().optional(),
 
   lastWorkspaceSession: z.array(appWorkspaceSessionEntrySchema).optional(),
   lastActiveTabIndex: z.number().int().nonnegative().optional(),

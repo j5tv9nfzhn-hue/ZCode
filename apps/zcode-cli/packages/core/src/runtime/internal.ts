@@ -58,7 +58,6 @@ import type { AgentRuntimeHookMethods } from "./internal-hook-methods.js";
 import type { ProjectMemoryExtractionScheduler } from "./helpers/project-memory-extraction.js";
 import type { RuntimeTelemetryFacade } from "../telemetry/runtime-telemetry.js";
 import type { WorkspaceHookRuntimeAdmissionPort } from "../hooks/workspace-hook-runtime-admission.js";
-import type { ProjectionDiffRecorder } from "./helpers/neutral-task-projection-diff.js";
 
 export interface AgentRuntimeInternal
   extends AgentRuntimeCoreMethods, AgentRuntimeTurnMethods, AgentRuntimeHookMethods {
@@ -75,7 +74,7 @@ export interface AgentRuntimeInternal
   logger?: Logger;
   eventSinks: Set<SessionEventSink>;
   /** debug-only 投影 diff 环形缓冲；只被 `session/debug` 读取。 */
-  projectionDiffRecorder: ProjectionDiffRecorder;
+
   now: () => Date;
   isRemoteWorkspace: () => boolean;
   registry: ToolRegistry;

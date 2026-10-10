@@ -151,14 +151,6 @@ interface SessionStartupPreferences {
    * 缺席——子代理有自己的身份（workflowActor），不继承用户人设。
    */
   customSystemPrompt?: string;
-  /** 中性任务投影：provider 请求投影层改写叙事文本与工具名；缺席/false 即关闭。 */
-  neutralTaskProjection: boolean;
-  /**
-   * 授权作用域登记表：命中时请求注入作用域事实（登记 = 使用者断言权限，责任在
-   * 使用者）。缺席即空表；workflow_child 不继承（与投影开关同语义，见 resolve
-   * inherit 分支）。
-   */
-  neutralTaskTargetAllowlist?: readonly string[];
   /**
    * 渗透编排：开启时注入 PentestOrchestrationPort 并加入三个编排 subagent 角色。
    * 缺席/false 即关闭；workflow_child 不继承（子代理没有自己的编排会话）。
@@ -168,8 +160,6 @@ interface SessionStartupPreferences {
   assistantCoTPrefillEnabled: boolean;
   /** 完整输出：不下发 maxOutputTokens；缺席/false 即关闭。 */
   unfilteredFullOutputEnabled: boolean;
-  neutralTaskProjectionDiffCapture: boolean;
-  neutralTaskProjectionDiffCaptureAssistant: boolean;
 }
 
 type SessionStartupPreferencesSource =
@@ -3250,11 +3240,8 @@ async function requestSessionRuntimePreferences(
         memoryEnabled: false,
         modelContextBudgetStrategy: DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
         nativeSearchEnhancementsEnabled: true,
-        neutralTaskProjection: false,
         assistantCoTPrefillEnabled: false,
         unfilteredFullOutputEnabled: false,
-        neutralTaskProjectionDiffCapture: false,
-        neutralTaskProjectionDiffCaptureAssistant: false,
         pentestOrchestrationEnabled: false,
       };
     }
@@ -3274,13 +3261,10 @@ async function resolveSessionStartupPreferences(
       memoryEnabled: source.parent.memoryEnabled,
       modelContextBudgetStrategy: DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY,
       nativeSearchEnhancementsEnabled: source.parent.nativeSearchEnhancementsEnabled,
-      // workflow_child 继承父会话的工具面，但不继承用户人设与请求投影策略：
-      // 身份来自 workflowActor persona，投影由父会话自己的请求承担。
-      neutralTaskProjection: false,
+      // workflow_child 继承父会话的工具面，但不继承用户人设：
+      // 身份来自 workflowActor persona。
       assistantCoTPrefillEnabled: false,
       unfilteredFullOutputEnabled: false,
-      neutralTaskProjectionDiffCapture: false,
-      neutralTaskProjectionDiffCaptureAssistant: false,
       // workflow_child 不继承编排：编排是主会话（task 根）的能力，子代理没有自己的编排会话。
       pentestOrchestrationEnabled: false,
       resolveInitialBashShellSelection: async () => inheritedShellSelection,
@@ -3304,16 +3288,9 @@ async function resolveSessionStartupPreferences(
     ...(runtimePreferences.customSystemPrompt
       ? { customSystemPrompt: runtimePreferences.customSystemPrompt }
       : {}),
-    neutralTaskProjection: runtimePreferences.neutralTaskProjection === true,
-    ...(runtimePreferences.neutralTaskTargetAllowlist?.length
-      ? { neutralTaskTargetAllowlist: runtimePreferences.neutralTaskTargetAllowlist }
-      : {}),
     pentestOrchestrationEnabled: runtimePreferences.pentestOrchestrationEnabled === true,
     assistantCoTPrefillEnabled: runtimePreferences.assistantCoTPrefillEnabled === true,
     unfilteredFullOutputEnabled: runtimePreferences.unfilteredFullOutputEnabled === true,
-    neutralTaskProjectionDiffCapture: runtimePreferences.neutralTaskProjectionDiffCapture === true,
-    neutralTaskProjectionDiffCaptureAssistant:
-      runtimePreferences.neutralTaskProjectionDiffCaptureAssistant === true,
     resolveInitialBashShellSelection: async () => {
       const executionPreferences = await requestSessionRuntimePreferences(
         context,
@@ -3408,24 +3385,12 @@ async function createRecord(
       ...(startupPreferences.customSystemPrompt
         ? { systemPrompt: startupPreferences.customSystemPrompt }
         : {}),
-      // 中性任务投影是请求投影层策略，同样按 session 固定（见 core
-      // runtime/helpers/neutral-task-projection.ts 的不变量说明）。
-      neutralTaskProjection: startupPreferences.neutralTaskProjection,
-      // 授权作用域登记表同理按 session 固定：只在命中时注入作用域事实，
-      // 未命中不声明任何授权（core helpers/neutral-task-projection.ts）。
-      ...(startupPreferences.neutralTaskTargetAllowlist?.length
-        ? { neutralTaskTargetAllowlist: startupPreferences.neutralTaskTargetAllowlist }
-        : {}),
-      // Assistant CoT Prefill 同理：按 session 固定，仅影响请求组装，不进入历史。
+      // Assistant CoT Prefill：按 session 固定，仅影响请求组装，不进入历史。
       assistantCoTPrefillEnabled: startupPreferences.assistantCoTPrefillEnabled,
       // 渗透编排：按 session 固定。开启时注入编排端口 + 三个编排 subagent 角色。
       pentestOrchestrationEnabled: startupPreferences.pentestOrchestrationEnabled,
       // 完整输出：按 session 固定，只影响单次请求参数。
       unfilteredFullOutputEnabled: startupPreferences.unfilteredFullOutputEnabled,
-      // 投影 diff 捕获：debug-only，按 session 固定；含用户原始输入，不进 transcript。
-      neutralTaskProjectionDiffCapture: startupPreferences.neutralTaskProjectionDiffCapture,
-      neutralTaskProjectionDiffCaptureAssistant:
-        startupPreferences.neutralTaskProjectionDiffCaptureAssistant,
       nativeSearchEnhancementsEnabled: startupPreferences.nativeSearchEnhancementsEnabled,
       modelContextBudgetStrategy: startupPreferences.modelContextBudgetStrategy,
       // Memory Settings 是现有 CLI features.memory/use 之外的总开关。只在关闭时

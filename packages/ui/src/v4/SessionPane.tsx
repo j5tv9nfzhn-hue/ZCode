@@ -1668,7 +1668,10 @@ export function SessionPane({
           items: [],
         });
       }
-      const cacheKey = JSON.stringify([
+      // 缓存 key 原先走 JSON.stringify 构造：这是行级路径，时间线里每一行都会生成一次。
+      // 字段都是原始值（字符串/数字），分隔符拼接即可保证唯一，避免每行一次序列化。
+      // \u0000 不出现在 cachePolicy/logEpoch/revision 等合法取值里。
+      const cacheKey = [
         options.cachePolicy,
         sessionId,
         current.logEpoch,
@@ -1679,7 +1682,7 @@ export function SessionPane({
           : (options.fileChangesState ?? "unknown"),
         target.rowId,
         target.entityId,
-      ]);
+      ].join("\u0000");
       const cachedRequest = fileChangesRequestCache.get(cacheKey);
       if (cachedRequest) {
         fileChangesRequestCache.delete(cacheKey);

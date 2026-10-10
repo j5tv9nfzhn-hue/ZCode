@@ -46,6 +46,18 @@ export async function runRegularTurnLoop(
 ): Promise<void> {
   while (true) {
     throwIfTurnAborted(state.turnAbortSignal);
+    // 会话级轮次上限（maxTurns）。只在 runtime 显式配置时生效——常规会话不设此项，
+    // 未在 profile 里写 maxTurns 的子代理也不设（见 subagent.ts 的注入处）。
+    // 命中即结束 loop：编排 worker 会因此被标 exhausted（试过但没做完），
+    // 而不是 done；对齐上游 worker 的 ReasonMaxTurns 语义。
+    // 检查放在 loop 顶部（发起下一次模型请求之前），保证不会多跑一轮。
+    if (
+      this.config.maxTurns !== undefined &&
+      state.modelStepCount >= this.config.maxTurns
+    ) {
+      state.maxTurnsReached = true;
+      break;
+    }
     const outputTokenRecoveryActive = state.turnRequestState.outputTokenContinuationCount > 0;
     // guide 只允许由完整 tool result batch 设置这个一次性诊断；普通 queue 不在
     // model roundtrip 起点消费，避免把未来 turn 错并入当前 product turn。

@@ -205,7 +205,6 @@ export function ProviderConnectionSection({
   baseUrlValue,
   onApiFormatChange,
   onBaseUrlChange,
-  onBaseUrlBlur,
   onBaseUrlKeyDown,
   onBaseUrlCompositionStart,
   onBaseUrlCompositionEnd,
@@ -216,7 +215,6 @@ export function ProviderConnectionSection({
   baseUrlValue: string;
   onApiFormatChange: (value: ProviderApiType) => void;
   onBaseUrlChange: (value: string) => void;
-  onBaseUrlBlur: () => void;
   onBaseUrlKeyDown?: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
   onBaseUrlCompositionStart?: () => void;
   onBaseUrlCompositionEnd?: () => void;
@@ -278,7 +276,6 @@ export function ProviderConnectionSection({
             id: "settings.modelProvider.baseUrlPlaceholder",
           })}
           onChange={(event) => onBaseUrlChange(event.target.value)}
-          onBlur={onBaseUrlBlur}
           onKeyDown={onBaseUrlKeyDown}
           onCompositionStart={onBaseUrlCompositionStart}
           onCompositionEnd={onBaseUrlCompositionEnd}
@@ -303,7 +300,6 @@ export function ProviderApiKeySection({
   presetApiKeyUrl,
   onOpenPresetApiKey,
   onApiKeyChange,
-  onApiKeyBlur,
   onApiKeyKeyDown,
   onApiKeyCompositionStart,
   onApiKeyCompositionEnd,
@@ -315,7 +311,6 @@ export function ProviderApiKeySection({
   presetApiKeyUrl?: string;
   onOpenPresetApiKey?: () => void;
   onApiKeyChange: (value: string) => void;
-  onApiKeyBlur: () => void;
   onApiKeyKeyDown?: (event: ReactKeyboardEvent<HTMLInputElement>) => void;
   onApiKeyCompositionStart?: () => void;
   onApiKeyCompositionEnd?: () => void;
@@ -338,7 +333,6 @@ export function ProviderApiKeySection({
         visible={apiKeyVisible}
         readOnly={readOnly}
         onChange={onApiKeyChange}
-        onBlur={onApiKeyBlur}
         onKeyDown={onApiKeyKeyDown}
         onCompositionStart={onApiKeyCompositionStart}
         onCompositionEnd={onApiKeyCompositionEnd}

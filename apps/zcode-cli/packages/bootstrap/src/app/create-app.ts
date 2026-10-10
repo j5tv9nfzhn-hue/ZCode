@@ -204,11 +204,15 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       cliStorageRoot,
       resolveZCodeRuntimeEnv(options.env ?? process.env) === "development",
     );
-    const zcodeSubagentProfileOutcome = await loadZCodeAgentProfiles({
-      logger,
-      storageRoot,
-      workingDirectory,
-    });
+    const ownsSessionStore = options.sessionStore === undefined;
+    // 启动期三段 I/O 互不依赖（用户 agent profile 目录、内置技能根、SQLite session store），
+    // 原实现串行 await，冷启动在磁盘慢的机器上白等两段。并行化后只等最慢的一段。
+    const [zcodeSubagentProfileOutcome, bundledSkillRoots, sessionStore] = await Promise.all([
+      loadZCodeAgentProfiles({ logger, storageRoot, workingDirectory }),
+      // 随 CLI 内置的技能包（dynamic-workflows 等）：不属于任何插件，用户无法停用或卸载。
+      resolveBundledSkillRoots({ cliStorageRoot, logger }),
+      options.sessionStore ?? openStartupSessionStore(configResult, startupTimer),
+    ]);
     const zcodeSubagentProfiles = zcodeSubagentProfileOutcome.profiles;
     const pluginOutcome = resolveStartupPlugins({
       cliStorageRoot,
@@ -219,8 +223,6 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       startupTimer,
       workingDirectory,
     });
-    // 随 CLI 内置的技能包（dynamic-workflows 等）：不属于任何插件，用户无法停用或卸载。
-    const bundledSkillRoots = await resolveBundledSkillRoots({ cliStorageRoot, logger });
     const pluginSubagentProfiles = loadPluginAgentProfiles({
       logger,
       plugins: pluginOutcome.plugins,
@@ -242,9 +244,6 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
         ? createPentestOrchestrationAgentProfiles()
         : []),
     ];
-    const ownsSessionStore = options.sessionStore === undefined;
-    const sessionStore =
-      options.sessionStore ?? (await openStartupSessionStore(configResult, startupTimer));
     const localSettingStore = asLocalSettingStore(sessionStore);
     const projectID = projectIdFromDirectory(workingDirectory);
     const persistedMode = options.runtimeConfig?.mode

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   TID_SETTINGS_COT_PREFILL_SWITCH,
-  TID_SETTINGS_NEUTRAL_TASK_PROJECTION_SWITCH,
   TID_SETTINGS_SYSTEM_PROMPT_TEXTAREA,
 } from "@zcode/shared";
 import { Button } from "@/components/ui/button.js";
@@ -12,17 +11,13 @@ import { SettingsGroupCard, SettingsRow } from "@/settings/SettingsPageParts.js"
 
 export function SystemPromptSettingsSection({
   customSystemPrompt,
-  neutralTaskProjection,
   assistantCoTPrefillEnabled,
   onCustomSystemPromptSave,
-  onNeutralTaskProjectionChange,
   onAssistantCoTPrefillEnabledChange,
 }: {
   customSystemPrompt: string;
-  neutralTaskProjection: boolean;
   assistantCoTPrefillEnabled: boolean;
   onCustomSystemPromptSave: (value: string) => Promise<void>;
-  onNeutralTaskProjectionChange: (enabled: boolean) => Promise<void>;
   onAssistantCoTPrefillEnabledChange: (enabled: boolean) => Promise<void>;
 }) {
   const { intl } = useZCodeIntl();
@@ -100,24 +95,6 @@ export function SystemPromptSettingsSection({
       </SettingsGroupCard>
 
       <SettingsGroupCard>
-        <SettingsRow
-          label={intl.formatMessage({ id: "settings.systemPrompt.neutralProjection.label" })}
-          description={intl.formatMessage({
-            id: "settings.systemPrompt.neutralProjection.description",
-          })}
-          control={
-            <Switch
-              aria-label={intl.formatMessage({
-                id: "settings.systemPrompt.neutralProjection.label",
-              })}
-              checked={neutralTaskProjection}
-              data-testid={TID_SETTINGS_NEUTRAL_TASK_PROJECTION_SWITCH}
-              onCheckedChange={(checked) => {
-                void onNeutralTaskProjectionChange(checked);
-              }}
-            />
-          }
-        />
         <SettingsRow
           label={intl.formatMessage({ id: "settings.systemPrompt.cotPrefill.label" })}
           description={intl.formatMessage({

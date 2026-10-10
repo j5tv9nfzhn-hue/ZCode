@@ -77,7 +77,19 @@ interface TaskListItemProps {
 }
 
 function areJsonFieldsEqual(left: unknown, right: unknown) {
-  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+  // 引用相同直接判等：任务列表每次 store 更新都会跑 memo comparator，
+  // 多数字段在未变化时引用稳定（store 的 stabilizer 会复用旧对象），
+  // 先短路可以避免高频路径上反复序列化（尤其 pendingInteraction/changeSummary 体积不小）。
+  if (left === right) {
+    return true;
+  }
+  // 一侧为 null/undefined 时不必序列化：语义上就是「无值」，另一方也只有无值才相等。
+  const leftEmpty = left === null || left === undefined;
+  const rightEmpty = right === null || right === undefined;
+  if (leftEmpty || rightEmpty) {
+    return leftEmpty === rightEmpty;
+  }
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function getTaskAutomationIdentity(task: ZCodeTaskMeta): string | undefined {

@@ -99,6 +99,12 @@ export interface RegularTurnLoopState {
   /** Core Server 的前台 child Selection override；优先于 profile 与父模型继承。 */
   subagentModelOverride?: SubagentRunOptions["modelOverride"];
   modelStepCount: number;
+  /**
+   * 本 loop 是否因命中会话级 maxTurns 上限而终止。
+   * 只在 runtime 显式配置 maxTurns 时为真（常规会话与未配置上限的子代理恒为 undefined）——
+   * 编排 worker 据此被标 exhausted 而不是 done（对齐上游 worker 的 ReasonMaxTurns）。
+   */
+  maxTurnsReached?: boolean;
   /** 当前 query 已成功写入 provider 可见持久历史的 assistant/compact 产物数量。 */
   historyRoundCount: number;
   reactiveCompactAttemptedInCurrentModelStep: boolean;

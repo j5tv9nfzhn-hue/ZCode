@@ -9,8 +9,6 @@ import {
   sessionDebugParamsSchema,
   zcodeTaskNetworkDebugStatusFromPayload,
   type SessionDebugPentestOverview,
-  type SessionDebugProjectionDiff,
-  type SessionDebugProjectionDiffSummary,
   type SessionDebugSnapshot,
 } from "@zcode/shared";
 import { requireSession, type ZCodeProtocolAgentServerContext } from "./server-types.js";
@@ -33,14 +31,6 @@ function emptySnapshot(sessionId: string): SessionDebugSnapshot {
     sessionId,
     rounds: [],
     networkEntries: [],
-    projectionDiffs: [],
-    projectionDiffSummary: {
-      enabled: false,
-      captureAssistant: false,
-      inspected: 0,
-      changed: 0,
-      evicted: 0,
-    },
     cache: null,
     // 编排态势不是累积量：它每次都现读，缺席即「未开启」。
     pentestOverview: null,
@@ -48,22 +38,8 @@ function emptySnapshot(sessionId: string): SessionDebugSnapshot {
 }
 
 /**
- * debug-only 投影 diff 的数据源端口。
- *
- * 结构化窄类型而非直接依赖 ZCodeApp 或 @zcode/core：这条读取路径唯一的契约
- * 就是「能给出环形缓冲内容与计数」。刻意不复用 core 的类型——深导入
- * @zcode/core 会被 package exports 挡住，且会把调试面耦合到内部模块形状。
- * runtime 不满足时按未开启处理，不让调试面成为 session 创建的硬依赖。
- */
-interface ProjectionDiffRuntimePort {
-  getNeutralTaskProjectionDiffs?: () => {
-    readonly entries: readonly SessionDebugProjectionDiff[];
-    readonly summary: SessionDebugProjectionDiffSummary;
-  };
-}
-
-/**
- * 渗透编排态势的读取端口。与上面同理走结构化窄类型，但**是异步的**：
+ * 渗透编排态势的读取端口。走结构化窄类型而非直接依赖 @zcode/core，
+ * 避免调试面耦合到内部模块形状。**是异步的**：
  * 快照来自 SQLite（core 的 PentestOrchestrationPort.graphOverview），
  * 与 diff 的内存环形缓冲不同，不能同步取。
  */
@@ -79,7 +55,7 @@ type DebugSessionRecord = {
   app: {
     sessionId: string;
     logger?: DebugLogger;
-    runtime?: ProjectionDiffRuntimePort & PentestOverviewRuntimePort;
+    runtime?: PentestOverviewRuntimePort;
   };
 };
 function remember(keys: Set<string>, key: string): boolean {
@@ -201,42 +177,9 @@ export function observeSessionDebug(record: SessionRecord, event: SessionEvent):
   ].slice(-SESSION_DEBUG_LIMITS.rounds);
 }
 
-const DISABLED_DIFF_SUMMARY: SessionDebugProjectionDiffSummary = {
-  enabled: false,
-  captureAssistant: false,
-  inspected: 0,
-  changed: 0,
-  evicted: 0,
-};
-
-/**
- * 实时读取投影 diff。
- *
- * 不走 WeakMap 旁路：diff 由 core 的 runtime 环形缓冲持有（instance 级，
- * 随 session 回收），这里按 UI 的拉取节奏现读，因此能反映「当前会话流下来
- * 的最新 diff」而不是 snapshot 累积的旧值。
- */
-function readProjectionDiffs(record: SessionRecord): {
-  projectionDiffs: SessionDebugProjectionDiff[];
-  projectionDiffSummary: SessionDebugProjectionDiffSummary;
-} {
-  const read = record.app.runtime?.getNeutralTaskProjectionDiffs;
-  // 没有 runtime（纯 stdio 资产）或方法缺席都按「未开启」返回，不抛错——
-  // 调试面不能反过来成为 session 创建的硬依赖。
-  if (typeof read !== "function") {
-    return { projectionDiffs: [], projectionDiffSummary: DISABLED_DIFF_SUMMARY };
-  }
-  const snapshot = read.call(record.app.runtime);
-  return {
-    // 两侧容量必须一致，否则 UI 会看到「上游已淘汰、上游仍有」的错位。
-    projectionDiffs: snapshot.entries.slice(-SESSION_DEBUG_LIMITS.projectionDiffs),
-    projectionDiffSummary: snapshot.summary,
-  };
-}
-
 export function readSessionDebug(record: SessionRecord): SessionDebugSnapshot {
   const base = observations.get(record)?.snapshot ?? emptySnapshot(record.app.sessionId);
-  return { ...base, ...readProjectionDiffs(record), pentestOverview: null };
+  return { ...base, pentestOverview: null };
 }
 
 /**

@@ -371,12 +371,6 @@ export const TID_RESOURCE_MANAGER_STORAGE_CONFIRM_CANCEL =
 export const TID_SETTINGS_MEMORY_SWITCH = "settings-memory-switch";
 /** 自定义系统提示词多行输入框 */
 export const TID_SETTINGS_SYSTEM_PROMPT_TEXTAREA = "settings-system-prompt-textarea";
-/** 中性任务投影总开关 */
-export const TID_SETTINGS_NEUTRAL_TASK_PROJECTION_SWITCH =
-  "settings-neutral-task-projection-switch";
-/** 授权作用域登记表多行输入框（CTF Console，一行一条确切 IP / 主机名） */
-export const TID_SETTINGS_NEUTRAL_TASK_TARGET_ALLOWLIST_TEXTAREA =
-  "settings-neutral-task-target-allowlist-textarea";
 /** Memory 设置模块刷新按钮 */
 export const TID_SETTINGS_MEMORY_REFRESH = "settings-memory-refresh";
 /** CoT Prefill 总开关 */

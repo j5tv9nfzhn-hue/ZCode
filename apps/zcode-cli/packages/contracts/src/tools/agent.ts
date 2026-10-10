@@ -52,6 +52,13 @@ export interface AgentCompletedOutput {
   totalDurationMs: number;
   totalTokens?: number;
   usage?: ModelUsage;
+  /**
+   * 子 turn 的终止类型（取自 child 最后一个 TurnComplete.resultType）。
+   * 编排器据此区分「正常完成」与「撞步数上限」——后者要把意图标 exhausted
+   * 而不是 done，好让规划者知道这个方向试过但没做完、需要换角度。
+   * 对齐上游 worker.Execute 返回的 harness.TerminalReason。
+   */
+  terminalReason?: "success" | "error_max_turns" | "error_max_budget" | "error_max_tool_calls";
 }
 
 export interface AgentBackgroundedOutput {
@@ -88,6 +95,9 @@ export const AgentCompletedOutputSchema = z
     totalDurationMs: z.number().int().nonnegative(),
     totalTokens: z.number().int().nonnegative().optional(),
     usage: z.record(z.unknown()).optional(),
+    terminalReason: z
+      .enum(["success", "error_max_turns", "error_max_budget", "error_max_tool_calls"])
+      .optional(),
   })
   .strict();
 

@@ -13,6 +13,33 @@ import {
   saveTaskSidePaneCollapsedPreference,
   saveTaskSidePaneMemoryState,
 } from "@/lib/taskSidePaneMemory.js";
+
+/**
+ * 左侧栏可见性持久化：与宽度（`WorkspaceShellLayout` 的
+ * `zcode:workspace-shell:sidebar-width-px`）同属 workspace shell 布局偏好。
+ * 缺席即默认可见（首次启动展开）。读写全部 try/catch 兜底，storage 不可用
+ * （隐私模式 / 配额满）时静默降级为「内存态、不持久化」，不阻断面板切换。
+ */
+const WORKSPACE_SIDEBAR_VISIBLE_STORAGE_KEY = "zcode:workspace-shell:sidebar-visible";
+
+function readStoredSidebarVisible(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const raw = window.localStorage.getItem(WORKSPACE_SIDEBAR_VISIBLE_STORAGE_KEY);
+    return raw === null ? true : raw === "true";
+  } catch {
+    return true;
+  }
+}
+
+function persistSidebarVisible(visible: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(WORKSPACE_SIDEBAR_VISIBLE_STORAGE_KEY, String(visible));
+  } catch {
+    // 静默降级：storage 不可用时仅内存态生效。
+  }
+}
 import {
   closeSidePaneTab,
   closeSidePaneTabForParent,
@@ -202,7 +229,7 @@ export function useAppPanels(options: {
   // 交互说明：侧栏显隐按钮放在 App 外层，而不是 Sidebar 内部。
   // 这样即使侧栏被隐藏，入口也仍然留在左上角，不会出现"收起后没有地方再展开"的问题；
   // 同时这里统一处理 macOS 红绿灯安全区，避免按钮和系统窗口控件重叠。
-  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(readStoredSidebarVisible);
   const [browserNavigationRequest, setBrowserNavigationRequest] =
     useState<BrowserNavigationRequest | null>(null);
   const [allRecentClosedSidePaneTabs, setAllRecentClosedSidePaneTabs] = useState<
@@ -1238,7 +1265,13 @@ export function useAppPanels(options: {
   }, [isOfficeMode, workspaceAbsPath]);
 
   const handleToggleSidebar = useCallback(() => {
-    setIsSidebarVisible((visible) => !visible);
+    setIsSidebarVisible((visible) => {
+      const next = !visible;
+      // 持久化写在 updater 内、setState 之外，避免 StrictMode 双调用把偏好写两次
+      // （写两次幂等，但副作用不该放在 updater 里——React 语义上 updater 必须是纯函数）。
+      persistSidebarVisible(next);
+      return next;
+    });
   }, []);
 
   const handleToggleSidePaneCollapse = useCallback(() => {

@@ -1712,19 +1712,12 @@ export const zcodeSessionRuntimePreferencesResultSchema = z
     ),
     // 用户自定义系统提示词；缺席（旧 Host / 未设置）表示使用内置默认。
     customSystemPrompt: nonEmptyString.optional(),
-    // 中性任务投影；缺席即关闭（fail-closed），保持旧 Host 行为不变。
-    neutralTaskProjection: z.boolean().optional(),
-    // 授权作用域登记表：缺席即空表（不注入作用域事实，也不删用户词汇）。
-    neutralTaskTargetAllowlist: z.array(z.string()).optional(),
     // 渗透编排（CTF Console）；缺席即关闭（fail-closed），普通会话工具面零影响。
     pentestOrchestrationEnabled: z.boolean().optional(),
     // Assistant CoT Prefill；缺席即关闭（fail-closed）。
     assistantCoTPrefillEnabled: z.boolean().optional(),
     // 完整输出（不下发 maxOutputTokens）；缺席即关闭（fail-closed）。
-    unfilteredFullOutputEnabled: z.boolean().optional(), // 投影 diff 捕获（debug-only）：默认关闭；含用户原始输入，不进 transcript。
-    neutralTaskProjectionDiffCapture: z.boolean().optional(),
-    // assistant 侧 diff 的二次开关（只过词表层，量大门檻低）。
-    neutralTaskProjectionDiffCaptureAssistant: z.boolean().optional(),
+    unfilteredFullOutputEnabled: z.boolean().optional(),
   })
   .strict();
 export type ZCodeSessionRuntimePreferencesResult = z.infer<

@@ -1,93 +1,30 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useServices } from "@/hooks/useServices.js";
 import { CtfConsoleConfigPanel } from "@/settings/CtfConsoleConfigPanel.js";
 import { CtfConsoleCoveragePanel } from "@/settings/CtfConsoleCoveragePanel.js";
-import { CtfConsoleLogPanel, type CtfConsoleLogEntry } from "@/settings/CtfConsoleLogPanel.js";
 import { CtfConsoleOrchestrationPanel } from "@/settings/CtfConsoleOrchestrationPanel.js";
-import { CtfConsoleProbePanel } from "@/settings/CtfConsoleProbePanel.js";
-import { CtfConsoleProjectionDiffPanel } from "@/settings/CtfConsoleProjectionDiffPanel.js";
-import type {
-  SessionDebugPentestOverview,
-  SessionDebugProjectionDiff,
-  SessionDebugSnapshot,
-} from "@zcode/shared";
+import type { SessionDebugPentestOverview } from "@zcode/shared";
 
-const MAX_LOG_ENTRIES = 300;
 const POLL_INTERVAL_MS = 3000;
 
-function summarizeEvent(event: { type: string; seq: number; payload?: unknown }): {
-  level: CtfConsoleLogEntry["level"];
-  title: string;
-  detail?: string;
-} {
-  if (event.type === "tool.updated") {
-    const payload = event.payload as { toolName?: string; state?: unknown } | undefined;
-    return {
-      level: "tool",
-      title: `tool ${payload?.toolName ?? "unknown"}`,
-      detail: payload?.state ? JSON.stringify(payload.state).slice(0, 160) : undefined,
-    };
-  }
-  if (event.type === "model.streaming") return { level: "model", title: "model.streaming" };
-  if (event.type.startsWith("turn.")) return { level: "session", title: event.type };
-  if (event.type.startsWith("session.")) return { level: "session", title: event.type };
-  return { level: "session", title: event.type };
-}
-
-export function CtfConsoleSection({
-  neutralTaskProjectionEnabled,
-  assistantCoTPrefillEnabled,
-  unfilteredFullOutputEnabled,
-  projectionDiffCaptureEnabled,
-  projectionDiffCaptureAssistantEnabled,
-  targetAllowlist,
-  pentestOrchestrationEnabled,
-  workspacePath,
-  workspaceIdentity,
-  onNeutralTaskProjectionChange,
-  onAssistantCoTPrefillEnabledChange,
-  onUnfilteredFullOutputChange,
-  onProjectionDiffCaptureChange,
-  onProjectionDiffCaptureAssistantChange,
-  onTargetAllowlistSave,
-  onPentestOrchestrationChange,
-}: {
-  neutralTaskProjectionEnabled: boolean;
-  assistantCoTPrefillEnabled: boolean;
-  unfilteredFullOutputEnabled: boolean;
-  projectionDiffCaptureEnabled: boolean;
-  projectionDiffCaptureAssistantEnabled: boolean;
-  /** 授权作用域登记表（已清洗的持久化值）。 */
-  targetAllowlist: readonly string[];
-  /** 渗透编排总开关（默认关闭）。 */
-  pentestOrchestrationEnabled: boolean;
-  workspacePath?: string;
-  workspaceIdentity?: string;
-  onNeutralTaskProjectionChange: (enabled: boolean) => Promise<void>;
-  onAssistantCoTPrefillEnabledChange: (enabled: boolean) => Promise<void>;
-  onUnfilteredFullOutputChange: (enabled: boolean) => Promise<void>;
-  onProjectionDiffCaptureChange: (enabled: boolean) => Promise<void>;
-  onProjectionDiffCaptureAssistantChange: (enabled: boolean) => Promise<void>;
-  onTargetAllowlistSave: (entries: readonly string[]) => Promise<void>;
-  onPentestOrchestrationChange: (enabled: boolean) => Promise<void>;
-}) {
-  const { intl } = useZCodeIntl();
+/**
+ * 编排态势轮询：先发现当前工作区最新会话，再读它的 pentestOverview。
+ *
+ * 合并为一个定时器（原先事件日志与态势各一个，白跑两轮 IPC）。快照只在
+ * 内容真正变化时才 setState，避免每 3 秒用新对象引用触发整棵子树重渲染。
+ */
+function usePentestOverview(workspacePath?: string, workspaceIdentity?: string) {
   const services = useServices();
-  const [entries, setEntries] = useState<CtfConsoleLogEntry[]>([]);
-  const [live, setLive] = useState(false);
+  const [overview, setOverview] = useState<SessionDebugPentestOverview | null | undefined>(
+    undefined,
+  );
   const sessionIdRef = useRef<string | undefined>(undefined);
-  const lastSeqRef = useRef<number>(-1);
+  const lastJsonRef = useRef<string | null>(null);
 
-  const appendEntries = useCallback((incoming: readonly CtfConsoleLogEntry[]) => {
-    if (incoming.length === 0) return;
-    setEntries((previous) => [...previous, ...incoming].slice(-MAX_LOG_ENTRIES));
-  }, []);
-
-  // 轮询会话事件作为实时日志源：按 seq 增量拉取，避免重复与全量扫描。
   useEffect(() => {
     if (!workspacePath) {
-      setLive(false);
+      setOverview(undefined);
       return;
     }
     let stopped = false;
@@ -104,30 +41,21 @@ export function CtfConsoleSection({
           if (!latest || stopped) return;
           sessionIdRef.current = latest.sessionId;
         }
-        const events = await services.zcodeAgentService.readSessionEvents({
+        const snapshot = await services.zcodeAgentService.readSessionDebug({
           ...target,
           sessionId: sessionIdRef.current,
-          ...(lastSeqRef.current >= 0 ? { afterSeq: lastSeqRef.current } : {}),
-          limit: 100,
         });
         if (stopped) return;
-        if (events.length > 0) {
-          lastSeqRef.current = events[events.length - 1]?.seq ?? lastSeqRef.current;
-          appendEntries(
-            events.map((event) => {
-              const summary = summarizeEvent(event);
-              return {
-                id: `${event.sessionId}:${event.seq}:${event.type}`,
-                at: event.timestamp,
-                ...summary,
-              };
-            }),
-          );
+        // 内容比较：schema parse 每次都产出新引用，直接 set 会让面板每 3 秒重渲染一次。
+        const next = snapshot.pentestOverview;
+        const nextJson = next === null ? "null" : JSON.stringify(next);
+        if (nextJson !== lastJsonRef.current) {
+          lastJsonRef.current = nextJson;
+          setOverview(next);
         }
-        setLive(true);
       } catch {
-        // 会话不存在/未就绪/远程不可达：保持离线态，不向设置页抛错。
-        if (!stopped) setLive(false);
+        // 会话不存在/未就绪/远程不可达：保持上一个快照（首次为 undefined），不抛错。
+        if (!stopped) setOverview(undefined);
       }
     };
 
@@ -139,53 +67,35 @@ export function CtfConsoleSection({
       stopped = true;
       clearInterval(timer);
       sessionIdRef.current = undefined;
-      lastSeqRef.current = -1;
+      lastJsonRef.current = null;
     };
-  }, [appendEntries, services.zcodeAgentService, workspaceIdentity, workspacePath]);
-
-  const handleClear = useCallback(() => {
-    setEntries([]);
-  }, []);
-
-  // 投影 diff：debug-only，按需拉取（环形缓冲容量 200，UI 侧不缓存历史）。
-  const [diffEntries, setDiffEntries] = useState<readonly SessionDebugProjectionDiff[]>([]);
-  const [diffSummary, setDiffSummary] = useState<SessionDebugSnapshot["projectionDiffSummary"]>({
-    enabled: false,
-    captureAssistant: false,
-    inspected: 0,
-    changed: 0,
-    evicted: 0,
-  });
-
-  // 渗透编排态势：undefined=快照不可用（未就绪 / 远程不可达），null=编排未开启。
-  const [pentestOverview, setPentestOverview] = useState<
-    SessionDebugPentestOverview | null | undefined
-  >(undefined);
-
-  const refreshProjectionDiffs = useCallback(async () => {
-    if (!workspacePath || !sessionIdRef.current) return;
-    try {
-      const target = workspaceIdentity ? { workspacePath, workspaceIdentity } : { workspacePath };
-      const snapshot = await services.zcodeAgentService.readSessionDebug({
-        ...target,
-        sessionId: sessionIdRef.current,
-      });
-      setDiffEntries(snapshot.projectionDiffs);
-      setDiffSummary(snapshot.projectionDiffSummary);
-      setPentestOverview(snapshot.pentestOverview);
-    } catch {
-      // 远程 workspace 或无 runtime 资产：保持「未开启」占位，不向设置页抛错。
-    }
   }, [services.zcodeAgentService, workspaceIdentity, workspacePath]);
 
-  // 与会话事件同一节奏刷新；捕获开关关闭时 summary.enabled=false，面板显示禁用态。
-  useEffect(() => {
-    if (!workspacePath) return;
-    const timer = setInterval(() => {
-      void refreshProjectionDiffs();
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [refreshProjectionDiffs, workspacePath]);
+  return overview;
+}
+
+export function CtfConsoleSection({
+  assistantCoTPrefillEnabled,
+  unfilteredFullOutputEnabled,
+  pentestOrchestrationEnabled,
+  workspacePath,
+  workspaceIdentity,
+  onAssistantCoTPrefillEnabledChange,
+  onUnfilteredFullOutputChange,
+  onPentestOrchestrationChange,
+}: {
+  assistantCoTPrefillEnabled: boolean;
+  unfilteredFullOutputEnabled: boolean;
+  /** 渗透编排总开关（默认关闭）。 */
+  pentestOrchestrationEnabled: boolean;
+  workspacePath?: string;
+  workspaceIdentity?: string;
+  onAssistantCoTPrefillEnabledChange: (enabled: boolean) => Promise<void>;
+  onUnfilteredFullOutputChange: (enabled: boolean) => Promise<void>;
+  onPentestOrchestrationChange: (enabled: boolean) => Promise<void>;
+}) {
+  const { intl } = useZCodeIntl();
+  const pentestOverview = usePentestOverview(workspacePath, workspaceIdentity);
 
   return (
     <div className="space-y-6">
@@ -199,60 +109,17 @@ export function CtfConsoleSection({
       </div>
 
       <CtfConsoleConfigPanel
-        neutralTaskProjectionEnabled={neutralTaskProjectionEnabled}
         assistantCoTPrefillEnabled={assistantCoTPrefillEnabled}
         unfilteredFullOutputEnabled={unfilteredFullOutputEnabled}
-        onNeutralTaskProjectionChange={onNeutralTaskProjectionChange}
         onAssistantCoTPrefillEnabledChange={onAssistantCoTPrefillEnabledChange}
         onUnfilteredFullOutputChange={onUnfilteredFullOutputChange}
-        projectionDiffCaptureEnabled={projectionDiffCaptureEnabled}
-        projectionDiffCaptureAssistantEnabled={projectionDiffCaptureAssistantEnabled}
-        onProjectionDiffCaptureChange={onProjectionDiffCaptureChange}
-        onProjectionDiffCaptureAssistantChange={onProjectionDiffCaptureAssistantChange}
-        targetAllowlist={targetAllowlist}
-        onTargetAllowlistSave={onTargetAllowlistSave}
         pentestOrchestrationEnabled={pentestOrchestrationEnabled}
         onPentestOrchestrationChange={onPentestOrchestrationChange}
       />
 
-      <CtfConsoleProbePanel
-        neutralTaskProjectionEnabled={neutralTaskProjectionEnabled}
-        targetAllowlist={targetAllowlist}
-        onSubmit={({ target, instruction, projected }) => {
-          const now = Date.now();
-          appendEntries([
-            {
-              id: `probe-${now}-input`,
-              at: now,
-              level: "config",
-              title: `probe input ${target}`,
-              detail: instruction,
-            },
-            {
-              id: `probe-${now}-projected`,
-              at: now + 1,
-              level: "config",
-              title: "probe projected",
-              detail: projected.split("\n")[0],
-            },
-          ]);
-        }}
-      />
-
-      <CtfConsoleLogPanel entries={entries} live={live} onClear={handleClear} />
-
       <CtfConsoleCoveragePanel overview={pentestOverview} />
 
       <CtfConsoleOrchestrationPanel overview={pentestOverview} />
-
-      <CtfConsoleProjectionDiffPanel
-        entries={diffEntries}
-        summary={diffSummary}
-        onRefresh={() => {
-          void refreshProjectionDiffs();
-        }}
-        onClear={() => setDiffEntries([])}
-      />
     </div>
   );
 }

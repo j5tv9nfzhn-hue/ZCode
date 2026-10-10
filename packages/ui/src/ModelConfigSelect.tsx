@@ -104,6 +104,132 @@ const MODEL_ITEM_OFFSCREEN_CLASS_NAME =
 export const MODEL_CONFIG_SELECT_BADGE_CLASS_NAME =
   "shrink-0 rounded-full bg-surface px-1 py-px text-ui-xs font-medium leading-normal text-foreground-subtle";
 
+/**
+ * 一组模型项的纯渲染组件。存在的唯一理由是 memo 边界：
+ * 父组件（ModelConfigSelect）在菜单打开时每轮 render 都会重建所有 group 的内容，
+ * 模型多的 provider（一次返回数百个）会反复对屏外行做 diff。这里让「items 引用
+ * 不变 + 三个稳定回调」直接短路子树，只有 items 真变化时才重建。
+ *
+ * 刻意不接收父组件里的 renderModelItem/renderModelItems 回调——那会让 memo 恒失效。
+ */
+const ModelItemsGroup = memo(function ModelItemsGroupComponent({
+  items,
+  normalizedValue,
+  isItemLocked,
+  lockReasonMessage,
+  onValueChange,
+}: {
+  items: readonly ModelSelectGroupItem[];
+  normalizedValue: string;
+  isItemLocked: (candidateValue: string) => boolean;
+  lockReasonMessage: string;
+  /** 已包含「提交选择 + 关闭菜单」两个动作，引用必须稳定。 */
+  onValueChange: (value: string) => void;
+}) {
+  return (
+    <DropdownMenuRadioGroup value={normalizedValue}>
+      {items.map((item) => (
+        <ModelItemRow
+          key={item.key}
+          item={item}
+          selected={item.value === normalizedValue}
+          locked={isItemLocked(item.value)}
+          lockReasonMessage={lockReasonMessage}
+          onValueChange={onValueChange}
+        />
+      ))}
+    </DropdownMenuRadioGroup>
+  );
+});
+
+const ModelItemRow = memo(function ModelItemRowComponent({
+  item,
+  selected,
+  locked,
+  lockReasonMessage,
+  onValueChange,
+}: {
+  item: ModelSelectGroupItem;
+  selected: boolean;
+  locked: boolean;
+  lockReasonMessage: string;
+  /** 已包含「提交选择 + 关闭菜单」两个动作。 */
+  onValueChange: (value: string) => void;
+}) {
+  const commonProps = {
+    "data-model-option-locked": locked ? "true" : undefined,
+    "data-model-option-selected": selected ? "true" : undefined,
+    "data-testid": testId(TID_CHAT_MODEL_SELECT_ITEM, item.value),
+    "data-checked": selected ? "true" : undefined,
+  } as const;
+  const content = (
+    <>
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+        <span className="min-w-0 truncate" title={item.name}>
+          {item.name}
+        </span>
+        {item.badgeLabel ? (
+          <span className={MODEL_CONFIG_SELECT_BADGE_CLASS_NAME}>{item.badgeLabel}</span>
+        ) : null}
+        {item.supportsVisionInput ? <ModelInputCapabilityBadge /> : null}
+      </span>
+      {locked ? (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="inline-flex size-4 items-center justify-center rounded-full text-foreground-subtlest hover:text-foreground-subtle"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+              >
+                <AlertCircle className="size-4" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" align="center" sideOffset={6}>
+              {lockReasonMessage}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : null}
+      {locked && selected ? <CheckIcon className="size-4 text-foreground-subtle" /> : null}
+    </>
+  );
+
+  if (locked) {
+    return (
+      <DropdownMenuItem
+        {...commonProps}
+        className={cn(
+          "min-h-8 cursor-not-allowed gap-2 px-2 text-ui-base text-foreground-subtlest data-[highlighted]:text-foreground-subtlest",
+          MODEL_ITEM_OFFSCREEN_CLASS_NAME,
+        )}
+        onSelect={(event) => event.preventDefault()}
+      >
+        {content}
+      </DropdownMenuItem>
+    );
+  }
+
+  return (
+    <DropdownMenuRadioItem
+      {...commonProps}
+      value={item.value}
+      className={cn("min-h-8 gap-2 pl-2 pr-8 text-ui-base", MODEL_ITEM_OFFSCREEN_CLASS_NAME)}
+      onSelect={() => {
+        onValueChange(item.value);
+      }}
+    >
+      {content}
+    </DropdownMenuRadioItem>
+  );
+});
+
 function shouldShowModelProviderLevel(modelGroups: readonly ModelSelectGroup[]): boolean {
   return modelGroups.length > 0;
 }
@@ -289,117 +415,35 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
     triggerRef?.current?.focus();
   }, [disabled, handlePopoverOpenChange, openRequestKey, triggerRef]);
 
-  const handleModelValueChange = useCallback(
+  // 稳定引用：ModelItemsGroup/ModelItemRow 是 memo 组件，若把箭头函数作为 prop
+  // 传入，每次父 render 都会换引用，memo 恒失效。这个回调同时承担「提交选择 +
+  // 关闭菜单」两个动作，与旧 renderModelItem 里内联 onSelect 的语义一致。
+  const handleModelItemSelect = useCallback(
     (nextValue: string) => {
       onValueChange(nextValue);
+      handlePopoverOpenChange(false);
     },
-    [onValueChange],
+    [onValueChange, handlePopoverOpenChange],
   );
 
   const triggerAriaLabel = useMemo(() => {
     return pending && pendingLabel ? pendingLabel : (tooltipTitle ?? currentTriggerTitle);
   }, [currentTriggerTitle, pending, pendingLabel, tooltipTitle]);
 
-  const renderModelItem = useCallback(
-    (item: ModelSelectGroupItem) => {
-      const itemLocked = isItemLocked(item.value);
-      const itemSelected = item.value === normalizedValue;
-      // React 的 key 不能跟随 props spread 传入，否则开发环境会在 CDP console 报警。
-      const itemKey = item.key;
-      const commonProps = {
-        "data-model-option-locked": itemLocked ? "true" : undefined,
-        "data-model-option-selected": itemSelected ? "true" : undefined,
-        "data-testid": testId(TID_CHAT_MODEL_SELECT_ITEM, item.value),
-        "data-checked": itemSelected ? "true" : undefined,
-      } as const;
-      const content = (
-        <>
-          <span className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-            <span className="min-w-0 truncate" title={item.name}>
-              {item.name}
-            </span>
-            {item.badgeLabel ? (
-              <span className={MODEL_CONFIG_SELECT_BADGE_CLASS_NAME}>{item.badgeLabel}</span>
-            ) : null}
-            {item.supportsVisionInput ? <ModelInputCapabilityBadge /> : null}
-          </span>
-          {itemLocked ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span
-                    className="inline-flex size-4 items-center justify-center rounded-full text-foreground-subtlest hover:text-foreground-subtle"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                  >
-                    <AlertCircle className="size-4" />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" align="center" sideOffset={6}>
-                  {lockReasonMessage}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : null}
-          {itemLocked && itemSelected ? (
-            <CheckIcon className="size-4 text-foreground-subtle" />
-          ) : null}
-        </>
-      );
-
-      if (itemLocked) {
-        return (
-          <DropdownMenuItem
-            key={itemKey}
-            {...commonProps}
-            className={cn(
-              "min-h-8 cursor-not-allowed gap-2 px-2 text-ui-base text-foreground-subtlest data-[highlighted]:text-foreground-subtlest",
-              MODEL_ITEM_OFFSCREEN_CLASS_NAME,
-            )}
-            onSelect={(event) => event.preventDefault()}
-          >
-            {content}
-          </DropdownMenuItem>
-        );
-      }
-
-      return (
-        <DropdownMenuRadioItem
-          key={itemKey}
-          {...commonProps}
-          value={item.value}
-          className={cn("min-h-8 gap-2 pl-2 pr-8 text-ui-base", MODEL_ITEM_OFFSCREEN_CLASS_NAME)}
-          onSelect={() => {
-            handleModelValueChange(item.value);
-            handlePopoverOpenChange(false);
-          }}
-        >
-          {content}
-        </DropdownMenuRadioItem>
-      );
-    },
-    [
-      handleModelValueChange,
-      handlePopoverOpenChange,
-      isItemLocked,
-      lockReasonMessage,
-      normalizedValue,
-    ],
-  );
-
+  // 模型列表内容 memo 化：菜单打开时父组件每轮 render 都会重建全部 group 的
+  // 模型项（含 directItems 内联的整组模型）。这里把「items 数组 + 三个稳定回调」
+  // 作为 memo 边界，group.items 引用不变时直接复用已渲染的子树。
   const renderModelItems = useCallback(
     (items: readonly ModelSelectGroupItem[]) => (
-      <DropdownMenuRadioGroup value={normalizedValue}>
-        {items.map((item) => renderModelItem(item))}
-      </DropdownMenuRadioGroup>
+      <ModelItemsGroup
+        items={items}
+        normalizedValue={normalizedValue}
+        isItemLocked={isItemLocked}
+        lockReasonMessage={lockReasonMessage}
+        onValueChange={handleModelItemSelect}
+      />
     ),
-    [normalizedValue, renderModelItem],
+    [handleModelItemSelect, isItemLocked, lockReasonMessage, normalizedValue],
   );
 
   const renderGroupLabel = useCallback(
@@ -619,9 +663,7 @@ export const ModelConfigSelect = memo(function ModelConfigSelectComponent({
                           {renderGroupLabel(group)}
                         </DropdownMenuLabel>
                         {renderProviderConnectionHeader(group)}
-                        <DropdownMenuRadioGroup value={normalizedValue}>
-                          {group.items.map((item) => renderModelItem(item))}
-                        </DropdownMenuRadioGroup>
+                        {renderModelItems(group.items)}
                       </div>
                     </Fragment>
                   );

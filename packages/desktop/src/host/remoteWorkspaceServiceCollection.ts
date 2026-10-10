@@ -272,16 +272,9 @@ export function createRemoteWorkspaceServiceCollection(params: {
               ...(settings.customSystemPrompt
                 ? { customSystemPrompt: settings.customSystemPrompt }
                 : {}),
-              neutralTaskProjection: settings.neutralTaskProjection === true,
-              ...(settings.neutralTaskTargetAllowlist?.length
-                ? { neutralTaskTargetAllowlist: settings.neutralTaskTargetAllowlist }
-                : {}),
               pentestOrchestrationEnabled: settings.pentestOrchestrationEnabled === true,
               assistantCoTPrefillEnabled: settings.assistantCoTPrefillEnabled === true,
               unfilteredFullOutputEnabled: settings.unfilteredFullOutputEnabled === true,
-              neutralTaskProjectionDiffCapture: settings.neutralTaskProjectionDiffCapture === true,
-              neutralTaskProjectionDiffCaptureAssistant:
-                settings.neutralTaskProjectionDiffCaptureAssistant === true,
               // remote workspace 与本地 Host 保持同一 scope 边界，首次执行不得再次等待 client config。
               ...(request.scope === "user-execution" && settings.integratedTerminalShell
                 ? { integratedTerminalShell: settings.integratedTerminalShell }

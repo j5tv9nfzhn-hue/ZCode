@@ -2164,11 +2164,8 @@ export function createZCodeAgentService(
                     memoryEnabled: false,
                     // 以下三项 fail-closed：没有权威偏好时保持关闭 / 使用内置默认。
                     // customSystemPrompt 缺席即「不覆盖 context builder 稳定 body」。
-                    neutralTaskProjection: false,
                     assistantCoTPrefillEnabled: false,
                     unfilteredFullOutputEnabled: false,
-                    neutralTaskProjectionDiffCapture: false,
-                    neutralTaskProjectionDiffCaptureAssistant: false,
                     pentestOrchestrationEnabled: false,
                   },
                 );

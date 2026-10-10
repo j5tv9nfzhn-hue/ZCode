@@ -1,7 +1,7 @@
 /**
  * 模型输出预算：决定本次请求下发给 provider 的 `maxOutputTokens`。
  *
- * 背景（真实缺陷，见 apps/zcode-cli/docs/neutral-task-mode.md）：
+ * 背景（真实缺陷）：
  * `unfilteredFullOutputEnabled`（CTF Console「完整输出」开关）最初实现为
  * **完全不下发** `maxOutputTokens`。adapter 的 `validateOptions` 是必填路径，
  * `maxOutputTokens === undefined` 会被判为 `invalid_model_request`

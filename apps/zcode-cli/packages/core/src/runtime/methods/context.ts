@@ -134,6 +134,9 @@ export function createContextBuilderFromSnapshot(
     embeddedSearchEnabled: resolveRuntimeEmbeddedSearchEnabled(this),
     skillMetadataBudget: this.config.skillMetadataBudget,
     customSystemPrompt: this.config.systemPrompt,
+    // CTF Console 身份行：编排开关同时驱动身份块走无授权核验版本。
+    // customSystemPrompt 非空时 builder 走整段替换路径，本字段不生效（互斥）。
+    ctfIdentityActive: this.config.pentestOrchestrationEnabled === true,
     workflowActor: this.config.workflowActor,
     language: this.config.language,
     outputStyle: this.config.outputStyle,

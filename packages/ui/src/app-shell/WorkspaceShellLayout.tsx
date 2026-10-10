@@ -116,6 +116,12 @@ const EMPTY_REMOTE_WORKSPACE_SESSIONS: NonNullable<
   WorkspaceShellLayoutProps["remoteWorkspaceSessions"]
 > = [];
 const CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX = 360;
+/**
+ * 自动展开的迟滞带：conversation 需在折叠阈值之上再富余这么多像素才自动展开。
+ * 折叠本身会加宽 conversation（36px rail 替代 264px 侧栏），若展开与折叠共用
+ * 同一阈值会在临界点反复抖动，展开门槛必须显著高于折叠门槛。
+ */
+const CONVERSATION_AUTO_EXPAND_HYSTERESIS_PX = 40;
 /** 折叠态侧栏宽度：36px 单图标条（详见 collapsedSidebarWidthPx 处的理由）。 */
 const WORKSPACE_SIDEBAR_COLLAPSED_RAIL_WIDTH_PX = 36;
 const CONVERSATION_AUTO_COLLAPSE_RESIZE_IDLE_MS = 300;
@@ -391,6 +397,14 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     workspaceKey,
   });
   const conversationAutoCollapseResizeTimerRef = useRef<number | null>(null);
+  /**
+   * 自动折叠状态机，区分「策略收起的」与「用户手动收起的」：
+   *  - `autoCollapsedRef`：当前折叠是否由自动策略触发（只有它为 true 才自动展开）。
+   *  - `userOverrideRef`：用户在本轮窄窗口区间内手动点过显隐；为 true 时抑制自动收起，
+   *    直到窗口重新跨过阈值（宽度回宽 → 冲突解除 → 复位）。
+   */
+  const sidebarAutoCollapsedRef = useRef(false);
+  const sidebarUserOverrideRef = useRef(false);
   const workspaceSidebarResizeSessionRef = useRef<WorkspaceSidebarResizeSession | null>(null);
   const [workspaceSidebarPanelWidthPx, setWorkspaceSidebarPanelWidthPx] = useState(
     () => readStoredWorkspaceSidebarWidthPx() ?? WORKSPACE_SIDEBAR_DEFAULT_WIDTH_PX,
@@ -411,6 +425,21 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     );
   }, [openWorkspaceKeys]);
   const isSidebarPanelVisible = isSidebarVisible;
+  /**
+   * 用户侧折叠/展开入口统一走这里（侧栏头部按钮、折叠 rail 展开按钮、快捷键）。
+   *
+   * 为什么包一层：自动折叠策略要知道「这次切换是不是用户在窄窗口里主动做的」——
+   * 手动点过就抑制自动收起，避免用户刚展开又被下一次 resize 策略关回去。
+   * 自动折叠自己调用的是 raw `handleToggleSidebar`（经 stateRef），不经过这里。
+   */
+  const handleUserToggleSidebar = useCallback(() => {
+    sidebarUserOverrideRef.current = true;
+    handleToggleSidebar();
+  }, [handleToggleSidebar]);
+  // 已知边缘：App 层快捷键（`toggleSidebar`）直接调 useAppPanels 的 raw handler，
+  // 不经过本 wrapper，因此不会置 userOverride。后果仅限「在窄窗口用快捷键展开侧栏后，
+  // 下一次 resize 可能又被自动收起」——用户再展开一次即可，不丢状态，不值得为此把
+  // override 状态提升到 useAppPanels（会牵动 hook 契约）。
   const {
     panelRef: terminalPanelRef,
     panelElementRef: terminalPanelElementRef,
@@ -464,26 +493,59 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     const readConversationWidthPx = () =>
       conversationPanelElementRef.current?.getBoundingClientRect().width ?? null;
 
-    const collapseSidebarIfStillNarrow = () => {
+    /**
+     * 左侧栏的自动显隐（双向）。
+     *
+     *  - 窄窗口：未收起的自动收起。用户在本轮窄窗口区间里手动点过的话抑制收起
+     *    （`userOverrideRef`），避免「用户展开 → 下一次 resize 又关掉」。
+     *  - 宽窗口：只有当当前折叠是自动造成的（`autoCollapsedRef`）才自动展开，
+     *    用户手动收起的保持收起——否则用户在小屏收起、拉宽又弹出来，是另一种打扰。
+     *  - 跨回宽阈值时复位 `userOverrideRef`：上次的窄窗口冲突已解除。
+     */
+    const applySidebarAutoVisibility = () => {
       const widthPx = readConversationWidthPx();
       if (widthPx === null) {
         return;
       }
 
       const {
-        handleToggleSidebar: collapseSidebar,
+        handleToggleSidebar: toggleSidebar,
         isSidebarVisible: latestIsSidebarVisible,
         workspaceKey: latestWorkspaceKey,
       } = conversationAutoCollapseStateRef.current;
 
-      if (latestIsSidebarVisible && widthPx < CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX) {
-        logger.info("[WorkspaceShellLayout] conversation 过窄，自动收起左侧栏", {
+      if (widthPx < CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX) {
+        if (latestIsSidebarVisible && !sidebarUserOverrideRef.current) {
+          logger.info("[WorkspaceShellLayout] conversation 过窄，自动收起左侧栏", {
+            widthPx: Math.round(widthPx),
+            thresholdPx: CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX,
+            workspaceKey: latestWorkspaceKey,
+          });
+          toggleSidebar();
+          sidebarAutoCollapsedRef.current = true;
+        }
+        return;
+      }
+
+      // 展开门槛 = 折叠阈值 + 迟滞带：折叠本身会加宽 conversation，共用同一阈值会抖动。
+      const expandThresholdPx =
+        CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX + CONVERSATION_AUTO_EXPAND_HYSTERESIS_PX;
+      if (
+        !latestIsSidebarVisible &&
+        sidebarAutoCollapsedRef.current &&
+        widthPx >= expandThresholdPx
+      ) {
+        logger.info("[WorkspaceShellLayout] conversation 恢复宽度，自动展开左侧栏", {
           widthPx: Math.round(widthPx),
-          thresholdPx: CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX,
+          thresholdPx: expandThresholdPx,
           workspaceKey: latestWorkspaceKey,
         });
-        collapseSidebar();
+        toggleSidebar();
+        sidebarAutoCollapsedRef.current = false;
       }
+      // 只清除「用户覆盖」：只要没有走出自动折叠状态，userOverride 保留（避免下一轮
+      // 窄窗口立刻又被自动收起）。
+      sidebarUserOverrideRef.current = false;
     };
 
     const runAutoCollapseForWindowResize = () => {
@@ -508,12 +570,12 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
         });
         collapseSidePane();
         window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(collapseSidebarIfStillNarrow);
+          window.requestAnimationFrame(applySidebarAutoVisibility);
         });
         return;
       }
 
-      collapseSidebarIfStillNarrow();
+      applySidebarAutoVisibility();
     };
 
     const handleWindowResize = () => {
@@ -1541,7 +1603,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           data-workspace-sidebar-panel="true"
           id="sidebar"
           className={cn(
-            "w-[var(--workspace-sidebar-panel-width)] max-w-[50%] flex-none overflow-hidden duration-200 ease-out transition-[width,opacity] data-[workspace-sidebar-resizing=true]:transition-opacity",
+            "w-[var(--workspace-sidebar-panel-width)] max-w-[50%] flex-none overflow-hidden duration-200 ease-out transition-[width,opacity] motion-reduce:transition-none data-[workspace-sidebar-resizing=true]:transition-opacity",
             // 拖动侧栏宽度时如果继续过渡 width，会让指针移动和实际宽度之间产生滞后。
             // 拖拽 active 通过 DOM 标记切 transition，避免 pointerdown/up 为了切 class 重渲染整棵 workspace。
             // 两侧都不加 opacity-0：折叠态要渲染可点的 rail，整体保持不透明。
@@ -1597,7 +1659,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                       isMacDesktop={isMacDesktop}
                       isWindowsDesktop={isWindowsDesktop}
                       isSidebarVisible={isSidebarVisible}
-                      onToggleSidebar={handleToggleSidebar}
+                      onToggleSidebar={handleUserToggleSidebar}
                       toggleSidebarShortcutLabel={toggleSidebarShortcutLabel}
                       canGoBack={canPrimaryNavigationBack}
                       canGoForward={canTaskNavForward}
@@ -1621,7 +1683,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
             // 外层容器宽度此时是 collapsedSidebarWidthPx（36px）；该宽度与 opacity 都由
             // isSidebarPanelVisible 分支放行，rail 才能真正接收点击。
             <WorkspaceSidebarCollapsedRail
-              onToggleSidebar={handleToggleSidebar}
+              onToggleSidebar={handleUserToggleSidebar}
               toggleSidebarShortcutLabel={toggleSidebarShortcutLabel}
             />
           )}
@@ -1981,7 +2043,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
             showNewTaskButton={showTopOverlayNewTaskButton}
             appLogoUrl={appLogoUrl}
             platform={platform}
-            onToggleSidebar={handleToggleSidebar}
+            onToggleSidebar={handleUserToggleSidebar}
             onCreateTask={handleCreateTaskInChat}
             onGoBack={primaryNavigationBack}
             onGoForward={handleTaskNavForward}

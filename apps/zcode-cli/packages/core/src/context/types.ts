@@ -116,6 +116,12 @@ export interface ContextBuilderConfig {
   skillMetadataBudget?: number;
   customSystemPrompt?: string;
   /**
+   * CTF Console 模式：置真时身份块用 CTF 安全行替代默认的「需授权上下文」行，
+   * 去掉模型自发的授权核验循环。只影响身份行，不动 Harness 与其余 system 段。
+   * 与 customSystemPrompt 互斥（后者整段替换，本标志位在默认身份路径上生效）。
+   */
+  ctfIdentityActive?: boolean;
+  /**
    * 动态工作流子代理（workflow child）的身份输入。在场即走 builder 的第三条路径：
    * 基座段（CLI prefix、安全行、Harness、memory）+ 工作流子代理契约 + persona 叠加，
    * 而不是像 `customSystemPrompt` 那样整段替换。与 `customSystemPrompt` 互斥。

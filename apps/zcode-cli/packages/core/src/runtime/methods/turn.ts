@@ -653,7 +653,9 @@ export async function executeTurnCommand(
             toolCallCount: loopState.toolCallCount,
             historyRoundCount: loopState.historyRoundCount,
             duration: Date.now() - turnMachine.state.startedAt.getTime(),
-            resultType: "success",
+            // 命中会话级轮次上限时如实上报，而不是伪装成 success——编排器按这个
+            // resultType 把 worker 的意图标 exhausted 而非 done。
+            resultType: loopState.maxTurnsReached ? "error_max_turns" : "success",
             ...(loopState.backgroundSubagentResultConsumed
               ? { backgroundSubagentResultConsumed: true }
               : {}),

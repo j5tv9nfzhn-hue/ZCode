@@ -5,10 +5,6 @@ import {
   updateConfig,
   setExecutionState,
 } from "./config.js";
-import {
-  getNeutralTaskProjectionDiffs,
-  clearNeutralTaskProjectionDiffs,
-} from "./projection-diff.js";
 import { getPentestOrchestrationOverview } from "./pentest-overview.js";
 import { getMode, getPlanEnabled } from "./config.js";
 import { getSessionModelSelection, setSessionModelSelection } from "./config.js";
@@ -208,8 +204,7 @@ export function installAgentRuntimeMethods(ctor: AgentRuntimeConstructor): void 
   proto.grantPermissionFullAccess = grantPermissionFullAccess;
   proto.initializeSessionShellEnvironmentIfNeeded = initializeSessionShellEnvironmentIfNeeded;
   proto.getSessionShellSelection = getSessionShellSelection;
-  proto.getNeutralTaskProjectionDiffs = getNeutralTaskProjectionDiffs;
-  proto.clearNeutralTaskProjectionDiffs = clearNeutralTaskProjectionDiffs;
+
   proto.getPentestOrchestrationOverview = getPentestOrchestrationOverview;
   proto.getMode = getMode;
   proto.getPlanEnabled = getPlanEnabled;

@@ -216,26 +216,14 @@ export interface AgentRuntimeConfig {
   // Context Builder config
   systemPrompt?: string;
   /**
-   * CTF Console 请求投影：只在 provider 请求投影层（runModelTextRequest）生效。
-   * 真实 user 输入**原文保留**并在前面注入「执行姿态」块；system / assistant / 合成
-   * user 文本与工具描述过词表层；工具名双向改写。canonical 历史、工具执行、落盘
-   * transcript 全部不变。Host 经 session/requestRuntimePreferences 下发，缺席即关闭。
-   *
-   * 2026-10-08 §1.9：此前实现为「删除攻击语义」，实测把攻击行为一起删掉了（模型
-   * 只去核查公开面），现改为能力保持。措辞中性化不再作用于真实 user 输入。
-   */
-  neutralTaskProjection?: boolean;
-  /**
-   * 授权作用域登记表（带外事实，`@zcode/shared` neutral-task-scope 清洗与匹配）。
-   * 全部目标命中时，user 输入前额外注入一句「已登记在演练作用域内」的作用域事实；
-   * 未命中**不声明任何授权**、也不删用户词汇。缺席即空表。
-   */
-  neutralTaskTargetAllowlist?: readonly string[];
-  /**
    * 渗透编排开关（CTF Console，默认关闭）。开启时注入 PentestOrchestrationPort，
    * core 侧据此注册 9 个编排产物工具（record_fact / report_finding / add_intent / ...），
    * 并把三个编排 subagent profile（goals/planner/worker）加入可用 agent 列表。
    * 缺席即关闭（fail-closed），普通会话工具面零影响。
+   *
+   * 2026-10-10：本开关同时驱动 **CTF 身份行**——开启时 system prompt 的身份块
+   * 用无授权核验框架的 CTF 版本（见 context/sections/identity.ts）。中性任务投影
+   * 路线已废弃，编排是唯一对外通道。
    */
   pentestOrchestrationEnabled?: boolean;
   /**
@@ -250,19 +238,6 @@ export interface AgentRuntimeConfig {
    * 模型请求参数，不改变上下文预算与 compact 策略。
    */
   unfilteredFullOutputEnabled?: boolean;
-  /**
-   * 投影 diff 捕获（debug-only，默认关闭）：记录「原文 → 投影后」配对到内存
-   * 环形缓冲，供 `session/debug` 按需拉取。仅在 `neutralTaskProjection` 同时
-   * 开启时生效（双前置，见 helpers/neutral-task-projection-diff.ts）。
-   * **记录内容含用户原始输入**，且不进 transcript（不构造 SessionEvent）。
-   */
-  neutralTaskProjectionDiffCapture?: boolean;
-  /**
-   * 投影 diff 是否包含 assistant 侧（默认关闭）。assistant 侧只过词表层，
-   * diff 量远大于 user 侧且不指向「句式重构是否生效」这一核心问题，
-   * 因此需要二次开关显式开启。
-   */
-  neutralTaskProjectionDiffCaptureAssistant?: boolean;
   /**
    * 动态工作流子代理的身份输入：在场即让
    * context builder 走「基座 + 工作流子代理契约 + persona 叠加」路径，而不是把 persona 当

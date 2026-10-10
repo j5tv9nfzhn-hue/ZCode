@@ -2136,9 +2136,6 @@ const enUS: Record<string, string> = {
     "Leave blank to use the built-in prompt. Example: act before reporting, decompose long tasks and advance step by step.",
   "settings.systemPrompt.save": "Save",
   "settings.systemPrompt.reset": "Restore default",
-  "settings.systemPrompt.neutralProjection.label": "Neutral task projection",
-  "settings.systemPrompt.neutralProjection.description":
-    "When enabled, requests sent to the model are neutralized first: your instructions are kept verbatim and only prefixed with identity and authorization framing, while tool names are projected to neutral forms; history and tool execution stay verbatim. Useful for long multi-stage task execution.",
   "settings.systemPrompt.cotPrefill.label": "Assistant thought prefill",
   "settings.systemPrompt.cotPrefill.description":
     'When enabled, an assistant thinking prefix (reasoning block + lead-in) is injected at the end of the message list before each request, so the model continues from a "already started" stance. Effective with self-hosted providers; off by default.',
@@ -2148,57 +2145,13 @@ const enUS: Record<string, string> = {
   "settings.ctfConsole.unfilteredOutput.label": "Full output (no truncation)",
   "settings.ctfConsole.unfilteredOutput.description":
     "Sends maxOutputTokens at the model's declared limit instead of the local context budget. The field is mandatory on the provider side — omitting it makes the request invalid.",
-  "settings.ctfConsole.projectionDiffCapture.label": "Projection diff capture (debug)",
-  "settings.ctfConsole.projectionDiffCapture.description":
-    "Records an original → projected pair for each narrative message into an in-memory ring buffer and shows it live. Off by default; requires the projection switch. Content includes the user's raw input and is never written to chat history or disk.",
-  "settings.ctfConsole.projectionDiffCaptureAssistant.label": "Also capture assistant side",
-  "settings.ctfConsole.projectionDiffCaptureAssistant.description":
-    "The assistant side only goes through the word list, so diffs are large and do not answer whether sentence restructuring worked. Off by default.",
-  "settings.ctfConsole.projectionDiff.title": "Projection diff",
-  "settings.ctfConsole.projectionDiff.disabled": "Capture is off",
-  "settings.ctfConsole.projectionDiff.summary":
-    "inspected {inspected} / changed {changed} / evicted {evicted}",
-  "settings.ctfConsole.projectionDiff.refresh": "Refresh",
-  "settings.ctfConsole.projectionDiff.clear": "Clear view",
-  "settings.ctfConsole.projectionDiff.empty":
-    "No diff yet. Enable capture and send a message to observe.",
-  "settings.ctfConsole.projectionDiff.truncated": "truncated ({length} chars)",
-  "settings.ctfConsole.projectionDiff.privacyWarning":
-    "This content contains the user's raw input. It lives in memory only and is never written to chat history or disk. Confirm compliance before sharing or screenshotting.",
-  "settings.ctfConsole.probe.title": "Projection preview (local, sends nothing)",
-  "settings.ctfConsole.probe.disclaimer":
-    "Please weigh the stakes before entering: target choice, rate and depth directly affect real public systems. The decision and all responsibility remain yours.",
-  "settings.ctfConsole.probe.targetLabel": "Target (domain / URL / IP)",
-  "settings.ctfConsole.probe.targetPlaceholder": "example.com",
-  "settings.ctfConsole.probe.instructionLabel": "Instruction ({TARGET} placeholder supported)",
-  "settings.ctfConsole.probe.preview": "Generate projected request preview",
-  "settings.ctfConsole.probe.copyOriginal": "Copy original instruction",
-  "settings.ctfConsole.probe.previewLabel":
-    "Instruction the model will receive (same projection as runtime)",
-  "settings.ctfConsole.probe.scopeMatched":
-    "Target is registered in your authorized scope: the request states that fact, and your ownership stays private.",
-  "settings.ctfConsole.probe.lexicalTriggers":
-    "The request contains attack vocabulary ({terms}) — capability-preserving mode keeps it; testing permission is yours to judge.",
-  "settings.ctfConsole.allowlist.label": "Authorized scope registry",
-  "settings.ctfConsole.allowlist.description":
-    "One entry per line; only exact IPs or full hostnames are accepted (their subdomains match automatically). Registering asserts you are authorized to test that target — the permission responsibility is yours. Matched targets get a scope fact in the request; your ownership stays private. Unregistered targets are sent verbatim with no authorization claim. Wildcards, CIDR subnets, credential-like strings and prose descriptions are dropped on save.",
-  "settings.ctfConsole.allowlist.placeholder":
-    "203.0.113.10\nlab.example.com\nhttps://api.example.com",
-  "settings.ctfConsole.allowlist.save": "Save registry",
-  "settings.ctfConsole.allowlist.dropped":
-    "These entries are not an exact hostname / IP and were ignored: {entries}",
+
+  "settings.modelProvider.saveDraft": "Save",
+  "settings.modelProvider.resetDraft": "Reset",
   "settings.ctfConsole.pentestOrchestration.label": "Pentest orchestration",
   "settings.ctfConsole.pentestOrchestration.description":
     "Register the structured orchestration tools (record_fact / report_finding / add_intent / insert_assets / ...) and the three orchestration subagents (goals / planner / worker). Off by default; only new sessions pick it up.",
-  "settings.ctfConsole.log.title": "Live logs",
-  "settings.ctfConsole.log.live": "session events connected",
-  "settings.ctfConsole.log.offline": "offline (console-local events only)",
-  "settings.ctfConsole.log.search": "Search logs",
-  "settings.ctfConsole.log.filter": "Filter by level",
-  "settings.ctfConsole.log.allLevels": "All",
-  "settings.ctfConsole.log.copy": "Copy",
-  "settings.ctfConsole.log.clear": "Clear",
-  "settings.ctfConsole.log.empty": "No log events yet",
+
   "settings.ctfConsole.coverage.title": "Pentest coverage",
   "settings.ctfConsole.coverage.description":
     "Asset coverage is the acceptance floor of the orchestration workflow: only tested/total proves the target was actually exercised.",

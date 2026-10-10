@@ -53,4 +53,4 @@
 - [DESIGN.md](DESIGN.md)：应用 UI 字号强制走 `text-ui-*` token（代码 / Diff / 终端除外），违反按缺陷处理，不要即兴发明视觉规则。**颜色同理**：只有 `packages/ui/src/styles.css` 里真实定义的 `--color-*` 才会生成工具类，凭空取名（如 `border-warning-border`）会静默无样式；彩色文字用 `text-warning`/`text-success`/`text-destructive` 而非给实底徽标配的 `-foreground` 变体；增删行用专用 `text-diff-added`/`text-diff-removed`，不要借 success/destructive。
 - [CONTEXT.md](CONTEXT.md)：领域词汇表（插件商店 + CTF Console），涉及这两块的文档与命名先对齐该表。
 - [docs/ctf-console.md](docs/ctf-console.md)：CTF Console 的使用者视角说明（开关语义、约束、实测数据）。
-- [apps/zcode-cli/docs/neutral-task-mode.md](apps/zcode-cli/docs/neutral-task-mode.md)：改 provider 请求投影层（system prompt / 工具名改写 / maxOutputTokens）前必读的不变量；触碰 `runtime/helpers/neutral-task-projection*.ts`、`runModelTextRequest` 或 `AgentRuntimeConfig.systemPrompt` 时按它验收。
+- [apps/zcode-cli/docs/pentest-orchestration.md](apps/zcode-cli/docs/pentest-orchestration.md)：CTF Console 编排层（goals/planner/worker 三角色 + 结构化产物工具 + CTF 身份行）的不变量；触碰 `runtime/pentest/`、`subagent/pentest-*` 或 `runtimeConfig.pentestOrchestrationEnabled` 时按它验收。

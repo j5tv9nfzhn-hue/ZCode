@@ -4102,6 +4102,15 @@ export class ProductProjection {
     );
     const endedTotal = childSessionIds.length - running.length;
     const semanticState = { childSessionIds, running, endedTotal };
+    // 快速路径：子代理集合与运行态都没动时直接短路，不做序列化。
+    // 三个字段是这份语义状态的完整投影，引用相等即内容相等。
+    if (
+      previous.endedTotal === endedTotal &&
+      previous.childSessionIds === childSessionIds &&
+      previous.running === running
+    ) {
+      return [];
+    }
     if (
       JSON.stringify(semanticState) ===
       JSON.stringify({

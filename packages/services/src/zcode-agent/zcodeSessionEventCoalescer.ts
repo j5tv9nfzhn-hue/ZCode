@@ -110,6 +110,10 @@ export function createBackgroundSessionEventCoalescer(params: {
   const flushDelayMs = params.flushDelayMs ?? DEFAULT_BACKGROUND_SESSION_EVENT_COALESCE_MS;
   const maxItems = params.maxItems ?? DEFAULT_BACKGROUND_SESSION_EVENT_MAX_ITEMS;
   let pendingEvents: PendingBackgroundSessionEvent[] = [];
+  // key → pending 项的下标索引：acceptSessionEvent 每次流式 delta 都要找同 key 的
+  // 待合并项，原实现是 pendingEvents.find（O(n)）。流式正文每 token 一条事件，
+  // 上限 96 项时这段扫描在一整段输出上是 O(n²)。索引与数组同步维护。
+  let pendingIndexByKey = new Map<string, PendingBackgroundSessionEvent>();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
 
@@ -128,6 +132,7 @@ export function createBackgroundSessionEventCoalescer(params: {
     }
     const events = pendingEvents.map((item) => item.event);
     pendingEvents = [];
+    pendingIndexByKey = new Map();
     clearFlushTimer();
     for (const event of events) {
       params.emit(event);
@@ -156,14 +161,16 @@ export function createBackgroundSessionEventCoalescer(params: {
       return;
     }
 
-    const existing = pendingEvents.find((item) => item.key === key);
+    const existing = pendingIndexByKey.get(key);
     if (existing) {
       existing.event = {
         type: "session.event",
         event: mergeBackgroundSessionEvents(existing.event.event, event.event),
       };
     } else {
-      pendingEvents.push({ key, event });
+      const item: PendingBackgroundSessionEvent = { key, event };
+      pendingEvents.push(item);
+      pendingIndexByKey.set(key, item);
     }
 
     if (pendingEvents.length >= maxItems || flushDelayMs <= 0) {
